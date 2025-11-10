@@ -44,10 +44,11 @@ if (!token) {
 }
 
 client.login(token);
+
 client.on('ready', async () => {
   console.log(`Connecté en tant que ${client.user.tag} !`);
 
-  // Déployer les commandes slash sur le serveur
+  // Déploiement des commandes slash
   const commands = [
     new SlashCommandBuilder()
       .setName('logs')
@@ -76,7 +77,7 @@ client.on('ready', async () => {
   try {
     console.log('Déploiement des commandes slash...');
     await rest.put(
-      Routes.applicationGuildCommands(client.user.id, '371158107319042048'), // <-- remplace par ton ID serveur
+      Routes.applicationGuildCommands(client.user.id, '371158107319042048'),
       { body: commands }
     );
     console.log('Commandes slash déployées !');
@@ -145,73 +146,109 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ======================
-// Système de tickets
+// Système de tickets et commandes slash
 // ======================
 client.on('interactionCreate', async (interaction) => {
-  if (interaction.isButton()) {
-    if (interaction.customId === 'create_ticket') {
-      const ticketChannel = await interaction.guild.channels.create({
-        name: `ticket-${interaction.user.username}`,
-        type: 0,
-        permissionOverwrites: [
-          { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-        ],
-      });
+  try {
+    if (interaction.isButton()) {
+      if (interaction.customId === 'create_ticket') {
+        const ticketChannel = await interaction.guild.channels.create({
+          name: `ticket-${interaction.user.username}`,
+          type: 0,
+          permissionOverwrites: [
+            { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+          ],
+        });
 
-      await ticketChannel.send({
-        content: `Bonjour ${interaction.user}, votre ticket a été créé !`,
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('close_ticket')
-              .setLabel('Fermer le ticket')
-              .setStyle(ButtonStyle.Danger)
-          ),
-        ],
-      });
-
-      await interaction.reply({ content: 'Ticket créé !', ephemeral: true });
-      sendLog(interaction.guild.id, `Ticket créé par ${interaction.user.tag}`);
-    } else if (interaction.customId === 'close_ticket') {
-      const channel = interaction.channel;
-      if (channel.name.startsWith('ticket-')) {
-        await channel.delete().catch(() => {});
-        sendLog(interaction.guild.id, `Ticket fermé : ${channel.name}`);
-      }
-    }
-  }
-
-  if (interaction.isChatInputCommand()) {
-    const channel = interaction.options.getChannel('channel');
-    switch (interaction.commandName) {
-      case 'logs':
-        logChannels.set(interaction.guild.id, channel.id);
-        await interaction.reply({ content: `Salon de logs défini : ${channel}`, ephemeral: true });
-        break;
-      case 'welcome':
-        welcomeChannels.set(interaction.guild.id, channel.id);
-        await interaction.reply({ content: `Salon de bienvenue défini : ${channel}`, ephemeral: true });
-        break;
-      case 'captcha':
-        captchaChannels.set(interaction.guild.id, channel.id);
-        await interaction.reply({ content: `Salon de captcha défini : ${channel}`, ephemeral: true });
-        break;
-      case 'ticket':
-        await interaction.reply({
-          content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.',
+        await ticketChannel.send({
+          content: `Bonjour ${interaction.user}, votre ticket a été créé !`,
           components: [
             new ActionRowBuilder().addComponents(
               new ButtonBuilder()
-                .setCustomId('create_ticket')
-                .setLabel('Créer un ticket')
-                .setStyle(ButtonStyle.Primary)
+                .setCustomId('close_ticket')
+                .setLabel('Fermer le ticket')
+                .setStyle(ButtonStyle.Danger)
             ),
           ],
-          ephemeral: true,
         });
-        break;
+
+        if (!interaction.replied) {
+          await interaction.reply({ content: 'Ticket créé !', flags: 64 });
+        } else {
+          await interaction.followUp({ content: 'Ticket créé !', flags: 64 });
+        }
+
+        sendLog(interaction.guild.id, `Ticket créé par ${interaction.user.tag}`);
+      } else if (interaction.customId === 'close_ticket') {
+        const channel = interaction.channel;
+        if (channel.name.startsWith('ticket-')) {
+          await channel.delete().catch(() => {});
+          sendLog(interaction.guild.id, `Ticket fermé : ${channel.name}`);
+        }
+      }
     }
+
+    if (interaction.isChatInputCommand()) {
+      const channel = interaction.options.getChannel('channel');
+      switch (interaction.commandName) {
+        case 'logs':
+          logChannels.set(interaction.guild.id, channel.id);
+          if (!interaction.replied) {
+            await interaction.reply({ content: `Salon de logs défini : ${channel}`, flags: 64 });
+          } else {
+            await interaction.followUp({ content: `Salon de logs défini : ${channel}`, flags: 64 });
+          }
+          break;
+        case 'welcome':
+          welcomeChannels.set(interaction.guild.id, channel.id);
+          if (!interaction.replied) {
+            await interaction.reply({ content: `Salon de bienvenue défini : ${channel}`, flags: 64 });
+          } else {
+            await interaction.followUp({ content: `Salon de bienvenue défini : ${channel}`, flags: 64 });
+          }
+          break;
+        case 'captcha':
+          captchaChannels.set(interaction.guild.id, channel.id);
+          if (!interaction.replied) {
+            await interaction.reply({ content: `Salon de captcha défini : ${channel}`, flags: 64 });
+          } else {
+            await interaction.followUp({ content: `Salon de captcha défini : ${channel}`, flags: 64 });
+          }
+          break;
+        case 'ticket':
+          if (!interaction.replied) {
+            await interaction.reply({
+              content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.',
+              components: [
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder()
+                    .setCustomId('create_ticket')
+                    .setLabel('Créer un ticket')
+                    .setStyle(ButtonStyle.Primary)
+                ),
+              ],
+              flags: 64,
+            });
+          } else {
+            await interaction.followUp({
+              content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.',
+              components: [
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder()
+                    .setCustomId('create_ticket')
+                    .setLabel('Créer un ticket')
+                    .setStyle(ButtonStyle.Primary)
+                ),
+              ],
+              flags: 64,
+            });
+          }
+          break;
+      }
+    }
+  } catch (err) {
+    console.error(err);
   }
 });
 
@@ -231,4 +268,3 @@ function sendLog(guildId, message) {
 
   channel.send({ embeds: [embed] }).catch(() => {});
 }
-
