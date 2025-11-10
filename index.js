@@ -52,9 +52,9 @@ client.login(token);
 const logChannels = new Map();
 const welcomeChannels = new Map();
 const captchaChannels = new Map();
-const ticketChannels = new Map(); // salon où le bouton sera mis
-const ticketCategory = new Map(); // catégorie pour les tickets
-const openTickets = new Map(); // Limiter 1 ticket par utilisateur
+const ticketChannels = new Map();
+const ticketCategory = new Map();
+const openTickets = new Map();
 
 // ======================
 // Déploiement des commandes slash
@@ -96,7 +96,7 @@ client.on('ready', async () => {
   try {
     console.log('Déploiement des commandes slash...');
     await rest.put(
-      Routes.applicationGuildCommands(client.user.id, '371158107319042048'), // Remplace par ton ID serveur
+      Routes.applicationGuildCommands(client.user.id, '371158107319042048'),
       { body: commands }
     );
     console.log('Commandes slash déployées !');
@@ -140,13 +140,11 @@ client.on('guildMemberAdd', async (member) => {
 
     if (roleNonVerifié) await member.roles.add(roleNonVerifié);
 
-    // MP de bienvenue
     try { await member.send(`Bienvenue sur ${member.guild.name} ! Veuillez valider le captcha pour accéder au serveur.`); }
     catch { console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`); }
 
     welcomeChannel.send(`Bienvenue ${member} sur le serveur !`);
 
-    // Captcha
     const captcha = Math.floor(1000 + Math.random() * 9000);
     const filter = m => m.author.id === member.id && m.content === captcha.toString();
     const captchaMessage = await captchaChannel.send(`${member}, envoyez le code suivant pour vérifier que vous êtes humain : \`${captcha}\``);
@@ -161,18 +159,14 @@ client.on('guildMemberAdd', async (member) => {
       return;
     }
 
-    // Supprimer messages captcha
     if (captchaMessage) await captchaMessage.delete().catch(() => {});
     collected.forEach(msg => msg.delete().catch(() => {}));
 
-    // Changer les rôles
     if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
     if (roleVérifié) await member.roles.add(roleVérifié);
 
-    // Message dans le salon de logs
     if (logChannel) logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
 
-    // MP confirmation
     try { await member.send(`Captcha validé ! Votre rôle a été mis à jour.`); }
     catch { console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`); }
 
@@ -189,7 +183,7 @@ client.on('interactionCreate', async (interaction) => {
 
       if (interaction.customId === 'create_ticket') {
         if (openTickets.has(userId)) {
-          await interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
+          if (!interaction.replied) await interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
           return;
         }
 
@@ -220,9 +214,11 @@ client.on('interactionCreate', async (interaction) => {
           ],
         });
 
-        await interaction.reply({ content: 'Ticket créé !', ephemeral: true });
+        if (!interaction.replied) await interaction.reply({ content: 'Ticket créé !', ephemeral: true });
         sendLog(interaction.guild.id, `Ticket créé par ${interaction.user.tag}`);
-      } else if (interaction.customId === 'close_ticket') {
+      }
+
+      else if (interaction.customId === 'close_ticket') {
         const channel = interaction.channel;
         const userEntry = [...openTickets.entries()].find(([_, chId]) => chId === channel.id);
         if (userEntry) openTickets.delete(userEntry[0]);
@@ -268,7 +264,7 @@ client.on('interactionCreate', async (interaction) => {
           );
 
           await ticketSalon.send({ content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.', components: [row] });
-          await interaction.reply({ content: `Bouton de ticket envoyé dans ${ticketSalon}`, flags: 64 });
+          await interaction.reply({ content: `Bouton de ticket envoyé dans ${ticketSalon}`, ephemeral: true });
           break;
       }
     }
