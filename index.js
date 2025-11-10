@@ -70,7 +70,10 @@ client.on('ready', async () => {
       ),
     new SlashCommandBuilder()
       .setName('ticket')
-      .setDescription('Créer un ticket via bouton'),
+      .setDescription('Créer le bouton de ticket dans un salon')
+      .addChannelOption(option =>
+        option.setName('channel').setDescription('Salon pour le bouton de ticket').setRequired(true)
+      ),
   ].map(cmd => cmd.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(token);
@@ -92,6 +95,7 @@ client.on('ready', async () => {
 const logChannels = new Map();
 const welcomeChannels = new Map();
 const captchaChannels = new Map();
+const ticketChannels = new Map(); // salon où le bouton sera mis
 
 // ======================
 // Anti-spam simple
@@ -114,29 +118,30 @@ client.on('messageCreate', (message) => {
 });
 
 // ======================
-// Bienvenue + captcha + rôles + suppression messages
+// Bienvenue + captcha + rôles
 // ======================
 client.on('guildMemberAdd', async (member) => {
   try {
     const welcomeChannel = member.guild.channels.cache.get(welcomeChannels.get(member.guild.id)) || member.guild.systemChannel;
     const captchaChannel = member.guild.channels.cache.get(captchaChannels.get(member.guild.id)) || welcomeChannel;
+    const logChannel = member.guild.channels.cache.get(logChannels.get(member.guild.id));
+
     if (!welcomeChannel) return;
 
     // Rôles
     const roleNonVerifié = member.guild.roles.cache.find(r => r.name === 'Non vérifié');
     const roleVérifié = member.guild.roles.cache.find(r => r.name === 'Vérifié');
 
-    // Ajouter rôle Non vérifié
     if (roleNonVerifié) await member.roles.add(roleNonVerifié);
 
-    // Envoyer message privé
+    // Message privé de bienvenue
     try {
       await member.send(`Bienvenue sur ${member.guild.name} ! Veuillez valider le captcha pour accéder au serveur.`);
     } catch (err) {
       console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`);
     }
 
-    // Message de bienvenue dans le canal
+    // Message de bienvenue public
     welcomeChannel.send(`Bienvenue ${member} sur le serveur !`);
 
     // Captcha
@@ -148,39 +153,43 @@ client.on('guildMemberAdd', async (member) => {
 
     if (!collected) {
       if (member.kickable) await member.kick("Captcha non validé");
+      if (captchaMessage) await captchaMessage.delete().catch(() => {});
+      if (collected) collected.forEach(msg => msg.delete().catch(() => {}));
       sendLog(member.guild.id, `Captcha échoué : ${member.user.tag}`);
-      await captchaMessage.delete().catch(() => {});
       return;
     }
 
-    // Retirer rôle Non vérifié et ajouter rôle Vérifié
+    // Supprimer messages captcha
+    if (captchaMessage) await captchaMessage.delete().catch(() => {});
+    collected.forEach(msg => msg.delete().catch(() => {}));
+
+    // Retirer rôle Non vérifié, ajouter Vérifié
     if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
     if (roleVérifié) await member.roles.add(roleVérifié);
 
-    // Supprimer messages captcha du bot et de l’utilisateur
-    collected.forEach(msg => msg.delete().catch(() => {}));
-    await captchaMessage.delete().catch(() => {});
+    // Message dans le salon de logs
+    if (logChannel) {
+      logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
+    }
 
-    // Message de confirmation privé
+    // Message privé de confirmation
     try {
-      await member.send(`Captcha validé ! Vous avez maintenant accès au serveur et votre rôle a été mis à jour.`);
+      await member.send(`Captcha validé ! Votre rôle a été mis à jour.`);
     } catch (err) {
       console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`);
     }
-
-    captchaChannel.send(`${member} a validé le captcha !`).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
-    sendLog(member.guild.id, `Captcha validé : ${member.user.tag}`);
   } catch (err) {
     console.error(err);
   }
 });
 
 // ======================
-// Système de tickets et commandes slash
+// Système de tickets via bouton
 // ======================
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton()) {
+      // Création de ticket
       if (interaction.customId === 'create_ticket') {
         const ticketChannel = await interaction.guild.channels.create({
           name: `ticket-${interaction.user.username}`,
@@ -220,60 +229,37 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
-      const channel = interaction.options.getChannel('channel');
       switch (interaction.commandName) {
         case 'logs':
-          logChannels.set(interaction.guild.id, channel.id);
-          if (!interaction.replied) {
-            await interaction.reply({ content: `Salon de logs défini : ${channel}`, flags: 64 });
-          } else {
-            await interaction.followUp({ content: `Salon de logs défini : ${channel}`, flags: 64 });
-          }
+          const logChannel = interaction.options.getChannel('channel');
+          logChannels.set(interaction.guild.id, logChannel.id);
+          await interaction.reply({ content: `Salon de logs défini : ${logChannel}`, flags: 64 });
           break;
+
         case 'welcome':
-          welcomeChannels.set(interaction.guild.id, channel.id);
-          if (!interaction.replied) {
-            await interaction.reply({ content: `Salon de bienvenue défini : ${channel}`, flags: 64 });
-          } else {
-            await interaction.followUp({ content: `Salon de bienvenue défini : ${channel}`, flags: 64 });
-          }
+          const welcomeChannel = interaction.options.getChannel('channel');
+          welcomeChannels.set(interaction.guild.id, welcomeChannel.id);
+          await interaction.reply({ content: `Salon de bienvenue défini : ${welcomeChannel}`, flags: 64 });
           break;
+
         case 'captcha':
-          captchaChannels.set(interaction.guild.id, channel.id);
-          if (!interaction.replied) {
-            await interaction.reply({ content: `Salon de captcha défini : ${channel}`, flags: 64 });
-          } else {
-            await interaction.followUp({ content: `Salon de captcha défini : ${channel}`, flags: 64 });
-          }
+          const captchaChannel = interaction.options.getChannel('channel');
+          captchaChannels.set(interaction.guild.id, captchaChannel.id);
+          await interaction.reply({ content: `Salon de captcha défini : ${captchaChannel}`, flags: 64 });
           break;
+
         case 'ticket':
-          if (!interaction.replied) {
-            await interaction.reply({
-              content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.',
-              components: [
-                new ActionRowBuilder().addComponents(
-                  new ButtonBuilder()
-                    .setCustomId('create_ticket')
-                    .setLabel('Créer un ticket')
-                    .setStyle(ButtonStyle.Primary)
-                ),
-              ],
-              flags: 64,
-            });
-          } else {
-            await interaction.followUp({
-              content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.',
-              components: [
-                new ActionRowBuilder().addComponents(
-                  new ButtonBuilder()
-                    .setCustomId('create_ticket')
-                    .setLabel('Créer un ticket')
-                    .setStyle(ButtonStyle.Primary)
-                ),
-              ],
-              flags: 64,
-            });
-          }
+          const ticketSalon = interaction.options.getChannel('channel');
+          ticketChannels.set(interaction.guild.id, ticketSalon.id);
+          // Créer le bouton de ticket dans le salon choisi
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('create_ticket')
+              .setLabel('Créer un ticket')
+              .setStyle(ButtonStyle.Primary)
+          );
+          await ticketSalon.send({ content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.', components: [row] });
+          await interaction.reply({ content: `Bouton de ticket envoyé dans ${ticketSalon}`, flags: 64 });
           break;
       }
     }
