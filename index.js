@@ -133,7 +133,7 @@ client.on('guildMemberAdd', async (member) => {
     const welcomeChannel = member.guild.channels.cache.get(welcomeChannels.get(member.guild.id)) || member.guild.systemChannel;
     const captchaChannel = member.guild.channels.cache.get(captchaChannels.get(member.guild.id)) || welcomeChannel;
     const logChannel = member.guild.channels.cache.get(logChannels.get(member.guild.id));
-    if (!welcomeChannel) return;
+    if (!welcomeChannel || !captchaChannel || !captchaChannel.isTextBased()) return;
 
     const roleNonVerifié = member.guild.roles.cache.find(r => r.name === 'Non vérifié');
     const roleVérifié = member.guild.roles.cache.find(r => r.name === 'Vérifié');
@@ -145,30 +145,32 @@ client.on('guildMemberAdd', async (member) => {
 
     welcomeChannel.send(`Bienvenue ${member} sur le serveur !`);
 
+    // Captcha
     const captcha = Math.floor(1000 + Math.random() * 9000);
     const filter = m => m.author.id === member.id && m.content === captcha.toString();
     const captchaMessage = await captchaChannel.send(`${member}, envoyez le code suivant pour vérifier que vous êtes humain : \`${captcha}\``);
 
-    const collected = await captchaChannel.awaitMessages({ filter, max: 1, time: 120000, errors: ['time'] }).catch(() => null);
+    try {
+      const collected = await captchaChannel.awaitMessages({ filter, max: 1, time: 120000, errors: ['time'] });
+      
+      // Supprimer messages captcha et réponse
+      await captchaMessage.delete().catch(() => {});
+      collected.forEach(msg => msg.delete().catch(() => {}));
 
-    if (!collected) {
+      // Changer les rôles
+      if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
+      if (roleVérifié) await member.roles.add(roleVérifié);
+
+      if (logChannel) logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
+      try { await member.send(`Captcha validé ! Votre rôle a été mis à jour.`); }
+      catch { console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`); }
+
+    } catch (err) {
+      // Timeout
       if (member.kickable) await member.kick("Captcha non validé");
-      if (captchaMessage) await captchaMessage.delete().catch(() => {});
-      if (collected) collected.forEach(msg => msg.delete().catch(() => {}));
-      sendLog(member.guild.id, `Captcha échoué : ${member.user.tag}`);
-      return;
+      await captchaMessage.delete().catch(() => {});
+      sendLog(member.guild.id, `❌Captcha échoué : ${member.user.tag}`);
     }
-
-    if (captchaMessage) await captchaMessage.delete().catch(() => {});
-    collected.forEach(msg => msg.delete().catch(() => {}));
-
-    if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
-    if (roleVérifié) await member.roles.add(roleVérifié);
-
-    if (logChannel) logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
-
-    try { await member.send(`Captcha validé ! Votre rôle a été mis à jour.`); }
-    catch { console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`); }
 
   } catch (err) { console.error(err); }
 });
@@ -183,7 +185,7 @@ client.on('interactionCreate', async (interaction) => {
 
       if (interaction.customId === 'create_ticket') {
         if (openTickets.has(userId)) {
-          if (!interaction.replied) await interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
+          if (!interaction.replied) await interaction.reply({ content: '❌ Vous avez déjà un ticket ouvert !', ephemeral: true });
           return;
         }
 
@@ -203,7 +205,7 @@ client.on('interactionCreate', async (interaction) => {
         openTickets.set(userId, ticketChannel.id);
 
         await ticketChannel.send({
-          content: `Bonjour ${interaction.user}, votre ticket a été créé !`,
+          content: ` 🖖Bonjour ${interaction.user}, votre ticket a été créé !`,
           components: [
             new ActionRowBuilder().addComponents(
               new ButtonBuilder()
@@ -215,7 +217,7 @@ client.on('interactionCreate', async (interaction) => {
         });
 
         if (!interaction.replied) await interaction.reply({ content: 'Ticket créé !', ephemeral: true });
-        sendLog(interaction.guild.id, `Ticket créé par ${interaction.user.tag}`);
+        sendLog(interaction.guild.id, `🎟️ Ticket créé par ${interaction.user.tag}`);
       }
 
       else if (interaction.customId === 'close_ticket') {
@@ -235,19 +237,19 @@ client.on('interactionCreate', async (interaction) => {
         case 'logs':
           const logChannel = interaction.options.getChannel('channel');
           logChannels.set(interaction.guild.id, logChannel.id);
-          await interaction.reply({ content: `Salon de logs défini : ${logChannel}`, flags: 64 });
+          await interaction.reply({ content: `Salon de logs défini : ${logChannel}`, ephemeral: true });
           break;
 
         case 'welcome':
           const welcomeChannel = interaction.options.getChannel('channel');
           welcomeChannels.set(interaction.guild.id, welcomeChannel.id);
-          await interaction.reply({ content: `Salon de bienvenue défini : ${welcomeChannel}`, flags: 64 });
+          await interaction.reply({ content: `Salon de bienvenue défini : ${welcomeChannel}`, ephemeral: true });
           break;
 
         case 'captcha':
           const captchaChannel = interaction.options.getChannel('channel');
           captchaChannels.set(interaction.guild.id, captchaChannel.id);
-          await interaction.reply({ content: `Salon de captcha défini : ${captchaChannel}`, flags: 64 });
+          await interaction.reply({ content: `Salon de captcha défini : ${captchaChannel}`, ephemeral: true });
           break;
 
         case 'ticket':
@@ -263,7 +265,7 @@ client.on('interactionCreate', async (interaction) => {
               .setStyle(ButtonStyle.Primary)
           );
 
-          await ticketSalon.send({ content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.', components: [row] });
+          await ticketSalon.send({ content: '🎟️ Cliquez sur le bouton ci-dessous pour créer un ticket.', components: [row] });
           await interaction.reply({ content: `Bouton de ticket envoyé dans ${ticketSalon}`, ephemeral: true });
           break;
       }
