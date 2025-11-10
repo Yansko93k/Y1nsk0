@@ -24,6 +24,7 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
+  ChannelType,
 } from 'discord.js';
 
 const client = new Client({
@@ -45,10 +46,12 @@ if (!token) {
 
 client.login(token);
 
+// ======================
+// Déploiement des commandes slash
+// ======================
 client.on('ready', async () => {
   console.log(`Connecté en tant que ${client.user.tag} !`);
 
-  // Déploiement des commandes slash
   const commands = [
     new SlashCommandBuilder()
       .setName('logs')
@@ -95,7 +98,7 @@ client.on('ready', async () => {
 const logChannels = new Map();
 const welcomeChannels = new Map();
 const captchaChannels = new Map();
-const ticketChannels = new Map(); // salon où le bouton sera mis
+const ticketChannels = new Map(); // salon pour le bouton ticket
 
 // ======================
 // Anti-spam simple
@@ -126,7 +129,7 @@ client.on('guildMemberAdd', async (member) => {
     const captchaChannel = member.guild.channels.cache.get(captchaChannels.get(member.guild.id)) || welcomeChannel;
     const logChannel = member.guild.channels.cache.get(logChannels.get(member.guild.id));
 
-    if (!welcomeChannel) return;
+    if (!welcomeChannel || !captchaChannel) return;
 
     // Rôles
     const roleNonVerifié = member.guild.roles.cache.find(r => r.name === 'Non vérifié');
@@ -146,38 +149,51 @@ client.on('guildMemberAdd', async (member) => {
 
     // Captcha
     const captcha = Math.floor(1000 + Math.random() * 9000);
-    const filter = m => m.author.id === member.id && m.content === captcha.toString();
-
     const captchaMessage = await captchaChannel.send(`${member}, envoyez le code suivant pour vérifier que vous êtes humain : \`${captcha}\``);
-    const collected = await captchaChannel.awaitMessages({ filter, max: 1, time: 120000, errors: ['time'] }).catch(() => null);
 
-    if (!collected) {
-      if (member.kickable) await member.kick("Captcha non validé");
-      if (captchaMessage) await captchaMessage.delete().catch(() => {});
-      if (collected) collected.forEach(msg => msg.delete().catch(() => {}));
-      sendLog(member.guild.id, `Captcha échoué : ${member.user.tag}`);
-      return;
-    }
+    const collector = captchaChannel.createMessageCollector({
+      filter: m => m.author.id === member.id,
+      max: 1,
+      time: 120000,
+    });
 
-    // Supprimer messages captcha
-    if (captchaMessage) await captchaMessage.delete().catch(() => {});
-    collected.forEach(msg => msg.delete().catch(() => {}));
+    collector.on('collect', async (msg) => {
+      if (msg.content === captcha.toString()) {
+        // Suppression messages captcha
+        await msg.delete().catch(() => {});
+        await captchaMessage.delete().catch(() => {});
 
-    // Retirer rôle Non vérifié, ajouter Vérifié
-    if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
-    if (roleVérifié) await member.roles.add(roleVérifié);
+        // Gestion des rôles
+        if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
+        if (roleVérifié) await member.roles.add(roleVérifié);
 
-    // Message dans le salon de logs
-    if (logChannel) {
-      logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
-    }
+        // Message dans le salon de logs
+        if (logChannel) logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
 
-    // Message privé de confirmation
-    try {
-      await member.send(`Captcha validé ! Votre rôle a été mis à jour.`);
-    } catch (err) {
-      console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`);
-    }
+        // Message privé de confirmation
+        try {
+          await member.send(`Captcha validé ! Votre rôle a été mis à jour.`);
+        } catch (err) {
+          console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`);
+        }
+      } else {
+        // Mauvais captcha => kick
+        if (member.kickable) await member.kick("Captcha non validé");
+        if (logChannel) logChannel.send(`${member.user.tag} a échoué le captcha et a été kick.`).catch(() => {});
+        await msg.delete().catch(() => {});
+        await captchaMessage.delete().catch(() => {});
+      }
+    });
+
+    collector.on('end', collected => {
+      if (collected.size === 0) {
+        // Timeout => kick
+        if (member.kickable) member.kick("Captcha non validé (timeout)").catch(() => {});
+        if (logChannel) logChannel.send(`${member.user.tag} n'a pas validé le captcha et a été kick.`).catch(() => {});
+        captchaMessage.delete().catch(() => {});
+      }
+    });
+
   } catch (err) {
     console.error(err);
   }
@@ -189,11 +205,10 @@ client.on('guildMemberAdd', async (member) => {
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton()) {
-      // Création de ticket
       if (interaction.customId === 'create_ticket') {
         const ticketChannel = await interaction.guild.channels.create({
           name: `ticket-${interaction.user.username}`,
-          type: 0,
+          type: ChannelType.GuildText,
           permissionOverwrites: [
             { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
             { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
@@ -212,11 +227,8 @@ client.on('interactionCreate', async (interaction) => {
           ],
         });
 
-        if (!interaction.replied) {
-          await interaction.reply({ content: 'Ticket créé !', flags: 64 });
-        } else {
-          await interaction.followUp({ content: 'Ticket créé !', flags: 64 });
-        }
+        if (!interaction.replied) await interaction.reply({ content: 'Ticket créé !', flags: 64 });
+        else await interaction.followUp({ content: 'Ticket créé !', flags: 64 });
 
         sendLog(interaction.guild.id, `Ticket créé par ${interaction.user.tag}`);
       } else if (interaction.customId === 'close_ticket') {
@@ -251,7 +263,6 @@ client.on('interactionCreate', async (interaction) => {
         case 'ticket':
           const ticketSalon = interaction.options.getChannel('channel');
           ticketChannels.set(interaction.guild.id, ticketSalon.id);
-          // Créer le bouton de ticket dans le salon choisi
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId('create_ticket')
