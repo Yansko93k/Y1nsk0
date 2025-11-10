@@ -24,7 +24,7 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
-  ChannelType
+  ChannelType,
 } from 'discord.js';
 
 const client = new Client({
@@ -96,7 +96,7 @@ client.on('ready', async () => {
   try {
     console.log('Déploiement des commandes slash...');
     await rest.put(
-      Routes.applicationGuildCommands(client.user.id, '371158107319042048'),
+      Routes.applicationGuildCommands(client.user.id, '371158107319042048'), // Remplace par ton ID serveur
       { body: commands }
     );
     console.log('Commandes slash déployées !');
@@ -133,105 +133,67 @@ client.on('guildMemberAdd', async (member) => {
     const welcomeChannel = member.guild.channels.cache.get(welcomeChannels.get(member.guild.id)) || member.guild.systemChannel;
     const captchaChannel = member.guild.channels.cache.get(captchaChannels.get(member.guild.id)) || welcomeChannel;
     const logChannel = member.guild.channels.cache.get(logChannels.get(member.guild.id));
-    if (!welcomeChannel || !captchaChannel || !captchaChannel.isTextBased()) return;
+
+    if (!welcomeChannel || !captchaChannel) return;
 
     const roleNonVerifié = member.guild.roles.cache.find(r => r.name === 'Non vérifié');
     const roleVérifié = member.guild.roles.cache.find(r => r.name === 'Vérifié');
 
     if (roleNonVerifié) await member.roles.add(roleNonVerifié);
 
-    try { await member.send(`Bienvenue sur ${member.guild.name} ! Veuillez valider le captcha pour accéder au serveur.`); }
-    catch { console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`); }
+    try {
+      await member.send(`Bienvenue sur ${member.guild.name} ! Veuillez valider le captcha pour accéder au serveur.`);
+    } catch { console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`); }
 
     welcomeChannel.send(`Bienvenue ${member} sur le serveur !`);
 
     // Captcha
     const captcha = Math.floor(1000 + Math.random() * 9000);
-    const filter = m => m.author.id === member.id && m.content === captcha.toString();
     const captchaMessage = await captchaChannel.send(`${member}, envoyez le code suivant pour vérifier que vous êtes humain : \`${captcha}\``);
 
-    try {
-      const collected = await captchaChannel.awaitMessages({ filter, max: 1, time: 120000, errors: ['time'] });
-      
-      // Supprimer messages captcha et réponse
-      await captchaMessage.delete().catch(() => {});
-      collected.forEach(msg => msg.delete().catch(() => {}));
+    const collector = captchaChannel.createMessageCollector({
+      filter: m => m.author.id === member.id,
+      max: 1,
+      time: 120000
+    });
 
-      // Changer les rôles
-      if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
-      if (roleVérifié) await member.roles.add(roleVérifié);
+    collector.on('collect', async (msg) => {
+      if (msg.content === captcha.toString()) {
+        await msg.delete().catch(() => {});
+        await captchaMessage.delete().catch(() => {});
+        if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
+        if (roleVérifié) await member.roles.add(roleVérifié);
+        if (logChannel) logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
+        try { await member.send(`Captcha validé ! Votre rôle a été mis à jour.`); } catch {}
+      } else {
+        if (member.kickable) await member.kick("Captcha non validé");
+        if (logChannel) logChannel.send(`${member.user.tag} a échoué le captcha et a été kick.`).catch(() => {});
+        await msg.delete().catch(() => {});
+        await captchaMessage.delete().catch(() => {});
+      }
+    });
 
-      if (logChannel) logChannel.send(`${member.user.tag} a validé le captcha et est maintenant vérifié !`).catch(() => {});
-      try { await member.send(`Captcha validé ! Votre rôle a été mis à jour.`); }
-      catch { console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`); }
+    collector.on('end', collected => {
+      if (collected.size === 0) {
+        if (member.kickable) member.kick("Captcha non validé (timeout)").catch(() => {});
+        if (logChannel) logChannel.send(`${member.user.tag} n'a pas validé le captcha et a été kick.`).catch(() => {});
+        captchaMessage.delete().catch(() => {});
+      }
+    });
 
-    } catch (err) {
-      // Timeout
-      if (member.kickable) await member.kick("Captcha non validé");
-      await captchaMessage.delete().catch(() => {});
-      sendLog(member.guild.id, `❌Captcha échoué : ${member.user.tag}`);
-    }
-
-  } catch (err) { console.error(err); }
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 // ======================
-// Système de tickets via bouton
+// Gestion des interactions (tickets & commandes slash)
 // ======================
 client.on('interactionCreate', async (interaction) => {
   try {
-    if (interaction.isButton()) {
-      const userId = interaction.user.id;
-
-      if (interaction.customId === 'create_ticket') {
-        if (openTickets.has(userId)) {
-          if (!interaction.replied) await interaction.reply({ content: '❌ Vous avez déjà un ticket ouvert !', ephemeral: true });
-          return;
-        }
-
-        const categoryId = ticketCategory.get(interaction.guild.id);
-        const ticketName = `ticket-${interaction.user.username}`;
-
-        const ticketChannel = await interaction.guild.channels.create({
-          name: ticketName,
-          type: ChannelType.GuildText,
-          parent: categoryId || undefined,
-          permissionOverwrites: [
-            { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-            { id: userId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-          ],
-        });
-
-        openTickets.set(userId, ticketChannel.id);
-
-        await ticketChannel.send({
-          content: ` 🖖Bonjour ${interaction.user}, votre ticket a été créé !`,
-          components: [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId('close_ticket')
-                .setLabel('Fermer le ticket')
-                .setStyle(ButtonStyle.Danger)
-            ),
-          ],
-        });
-
-        if (!interaction.replied) await interaction.reply({ content: 'Ticket créé !', ephemeral: true });
-        sendLog(interaction.guild.id, `🎟️ Ticket créé par ${interaction.user.tag}`);
-      }
-
-      else if (interaction.customId === 'close_ticket') {
-        const channel = interaction.channel;
-        const userEntry = [...openTickets.entries()].find(([_, chId]) => chId === channel.id);
-        if (userEntry) openTickets.delete(userEntry[0]);
-
-        if (channel.name.startsWith('ticket-')) {
-          await channel.delete().catch(() => {});
-          sendLog(interaction.guild.id, `Ticket fermé : ${channel.name}`);
-        }
-      }
-    }
-
+    // ======================
+    // Commandes slash
+    // ======================
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
         case 'logs':
@@ -257,20 +219,73 @@ client.on('interactionCreate', async (interaction) => {
           ticketChannels.set(interaction.guild.id, ticketSalon.id);
           const category = interaction.options.getChannel('category');
           if (category && category.type === ChannelType.GuildCategory) ticketCategory.set(interaction.guild.id, category.id);
-
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId('create_ticket')
               .setLabel('Créer un ticket')
               .setStyle(ButtonStyle.Primary)
           );
-
-          await ticketSalon.send({ content: '🎟️ Cliquez sur le bouton ci-dessous pour créer un ticket.', components: [row] });
+          await ticketSalon.send({ content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.', components: [row] });
           await interaction.reply({ content: `Bouton de ticket envoyé dans ${ticketSalon}`, ephemeral: true });
           break;
       }
     }
-  } catch (err) { console.error(err); }
+
+    // ======================
+    // Boutons (tickets)
+    // ======================
+    if (interaction.isButton()) {
+      const userId = interaction.user.id;
+
+      if (interaction.customId === 'create_ticket') {
+        if (openTickets.has(userId)) {
+          await interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
+          return;
+        }
+
+        const categoryId = ticketCategory.get(interaction.guild.id);
+        const ticketName = `ticket-${interaction.user.username}`;
+        const ticketChannel = await interaction.guild.channels.create({
+          name: ticketName,
+          type: ChannelType.GuildText,
+          parent: categoryId || undefined,
+          permissionOverwrites: [
+            { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: userId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+          ],
+        });
+
+        openTickets.set(userId, ticketChannel.id);
+        await ticketChannel.send({
+          content: `Bonjour ${interaction.user}, votre ticket a été créé !`,
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId('close_ticket')
+                .setLabel('Fermer le ticket')
+                .setStyle(ButtonStyle.Danger)
+            ),
+          ],
+        });
+
+        await interaction.reply({ content: 'Ticket créé !', ephemeral: true });
+        sendLog(interaction.guild.id, `Ticket créé par ${interaction.user.tag}`);
+      }
+
+      else if (interaction.customId === 'close_ticket') {
+        const channel = interaction.channel;
+        const userEntry = [...openTickets.entries()].find(([_, chId]) => chId === channel.id);
+        if (userEntry) openTickets.delete(userEntry[0]);
+        if (channel.name.startsWith('ticket-')) {
+          await channel.delete().catch(() => {});
+          sendLog(interaction.guild.id, `Ticket fermé : ${channel.name}`);
+        }
+      }
+    }
+
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 // ======================
