@@ -60,8 +60,8 @@ const openTickets = new Map();      // userId -> channelId (limit 1 ticket per u
 // ======================
 // Déploiement des commandes slash (guild only -> remplace GUILD_ID_HERE)
 // ======================
-client.on('ready', async () => {
-  console.log(`Connecté en tant que ${client.user.tag} ! Déploiement des commandes...`);
+client.on('clientReady', async (client) => {
+  console.log(`Client prêt : ${client.user.tag}. Déploiement des commandes...`);
 
   const commands = [
     new SlashCommandBuilder()
@@ -83,18 +83,22 @@ client.on('ready', async () => {
       .setName('ticket')
       .setDescription('Poster le bouton de ticket dans un salon et définir la catégorie')
       .addChannelOption(opt => opt.setName('channel').setDescription('Salon pour le bouton de ticket').setRequired(true))
-      .addChannelOption(opt => opt.setName('category').setDescription('Catégorie où seront créés les tickets').setRequired(false)),
-  ].map(c => c.toJSON());
+      .addChannelOption(opt => opt.setName('category').setDescription('Catégorie où seront créés les tickets').setRequired(false))
+  ].map(cmd => cmd.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(token);
+
   try {
-    // REMPLACE 'GUILD_ID_HERE' par ton ID de serveur pour déployer sur ce serveur uniquement (rapide)
-    await rest.put(Routes.applicationGuildCommands(client.user.id, '371158107319042048'), { body: commands });
-    console.log('Commandes slash déployées sur le serveur (guild).');
-  } catch (err) {
-    console.error('Erreur déploiement commandes slash :', err);
+    await rest.put(
+      Routes.applicationGuildCommands(client.user.id, '371158107319042048'),
+      { body: commands }
+    );
+    console.log('Commandes slash installées avec succès.');
+  } catch (error) {
+    console.error('Erreur déploiement commandes slash :', error);
   }
 });
+
 
 // ======================
 // Helper : créer embed de log
