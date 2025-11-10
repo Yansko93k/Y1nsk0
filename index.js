@@ -89,7 +89,7 @@ client.on('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(token);
   try {
     // REMPLACE 'GUILD_ID_HERE' par ton ID de serveur pour déployer sur ce serveur uniquement (rapide)
-    await rest.put(Routes.applicationGuildCommands(client.user.id, 'GUILD_ID_HERE'), { body: commands });
+    await rest.put(Routes.applicationGuildCommands(client.user.id, '371158107319042048'), { body: commands });
     console.log('Commandes slash déployées sur le serveur (guild).');
   } catch (err) {
     console.error('Erreur déploiement commandes slash :', err);
