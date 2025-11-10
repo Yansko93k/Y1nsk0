@@ -114,7 +114,7 @@ client.on('messageCreate', (message) => {
 });
 
 // ======================
-// Bienvenue + captcha
+// Bienvenue + captcha + rôles + suppression messages
 // ======================
 client.on('guildMemberAdd', async (member) => {
   try {
@@ -122,24 +122,54 @@ client.on('guildMemberAdd', async (member) => {
     const captchaChannel = member.guild.channels.cache.get(captchaChannels.get(member.guild.id)) || welcomeChannel;
     if (!welcomeChannel) return;
 
-    // Message de bienvenue
+    // Rôles
+    const roleNonVerifié = member.guild.roles.cache.find(r => r.name === 'Non vérifié');
+    const roleVérifié = member.guild.roles.cache.find(r => r.name === 'Vérifié');
+
+    // Ajouter rôle Non vérifié
+    if (roleNonVerifié) await member.roles.add(roleNonVerifié);
+
+    // Envoyer message privé
+    try {
+      await member.send(`Bienvenue sur ${member.guild.name} ! Veuillez valider le captcha pour accéder au serveur.`);
+    } catch (err) {
+      console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`);
+    }
+
+    // Message de bienvenue dans le canal
     welcomeChannel.send(`Bienvenue ${member} sur le serveur !`);
 
     // Captcha
     const captcha = Math.floor(1000 + Math.random() * 9000);
     const filter = m => m.author.id === member.id && m.content === captcha.toString();
 
-    await captchaChannel.send(`${member}, envoyez le code suivant pour vérifier que vous êtes humain : \`${captcha}\``);
+    const captchaMessage = await captchaChannel.send(`${member}, envoyez le code suivant pour vérifier que vous êtes humain : \`${captcha}\``);
     const collected = await captchaChannel.awaitMessages({ filter, max: 1, time: 120000, errors: ['time'] }).catch(() => null);
 
     if (!collected) {
       if (member.kickable) await member.kick("Captcha non validé");
-      sendLog(member.guild.id, `Captcha échoué : ${member.tag}`);
+      sendLog(member.guild.id, `Captcha échoué : ${member.user.tag}`);
+      await captchaMessage.delete().catch(() => {});
       return;
     }
 
-    captchaChannel.send(`${member} a validé le captcha !`);
-    sendLog(member.guild.id, `Captcha validé : ${member.tag}`);
+    // Retirer rôle Non vérifié et ajouter rôle Vérifié
+    if (roleNonVerifié) await member.roles.remove(roleNonVerifié);
+    if (roleVérifié) await member.roles.add(roleVérifié);
+
+    // Supprimer messages captcha du bot et de l’utilisateur
+    collected.forEach(msg => msg.delete().catch(() => {}));
+    await captchaMessage.delete().catch(() => {});
+
+    // Message de confirmation privé
+    try {
+      await member.send(`Captcha validé ! Vous avez maintenant accès au serveur et votre rôle a été mis à jour.`);
+    } catch (err) {
+      console.warn(`Impossible d’envoyer le MP à ${member.user.tag}`);
+    }
+
+    captchaChannel.send(`${member} a validé le captcha !`).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+    sendLog(member.guild.id, `Captcha validé : ${member.user.tag}`);
   } catch (err) {
     console.error(err);
   }
