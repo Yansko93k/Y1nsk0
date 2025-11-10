@@ -77,7 +77,7 @@ client.on('ready', async () => {
   try {
     console.log('Déploiement des commandes slash...');
     await rest.put(
-      Routes.applicationGuildCommands(client.user.id, '371158107319042048'),
+      Routes.applicationGuildCommands(client.user.id, '371158107319042048'), // Remplace par ton ID serveur
       { body: commands }
     );
     console.log('Commandes slash déployées !');
