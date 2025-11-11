@@ -6,7 +6,7 @@ import {
   ChannelType 
 } from 'discord.js';
 import { sendLog } from './logs.js'; // logs.js doit être dans le même dossier src
-import { TICKET_CATEGORY_ID, SUPPORT_ROLE_ID, TICKET_MESSAGE_CHANNEL_ID } from './config.js';
+import { TICKET_CATEGORY_ID } from './commands/config.js'; // PAS ./src/config.js
 
 export const ticketCategory = new Map();
 export const openTickets = new Map();
