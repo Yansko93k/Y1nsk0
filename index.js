@@ -2,9 +2,10 @@ import 'dotenv/config';
 import express from 'express';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { registerLogs } from './logs.js';
-import { registerTickets } from './tickets.js';
-import { registerCaptcha } from './captcha.js';
+import { registerTickets, ticketCategory } from './tickets.js';
+import { registerCaptcha, welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js';
 import { registerCommands } from './commands/index.js';
+import { loadAllConfigs } from './storage.js';
 
 const client = new Client({
   intents: [
@@ -18,6 +19,18 @@ const client = new Client({
 });
 
 client.commands = new Map();
+
+// --- Chargement automatique des configs sauvegardées ---
+const allConfigs = loadAllConfigs();
+for (const [guildId, cfg] of Object.entries(allConfigs)) {
+  if (cfg.log) logChannels.set(guildId, cfg.log);
+  if (cfg.welcome) welcomeChannels.set(guildId, cfg.welcome);
+  if (cfg.captcha) captchaChannels.set(guildId, cfg.captcha);
+  if (cfg.roleNon) rolesNonVerif.set(guildId, cfg.roleNon);
+  if (cfg.roleVerif) rolesVerif.set(guildId, cfg.roleVerif);
+  if (cfg.ticketCat) ticketCategory.set(guildId, cfg.ticketCat);
+}
+// ---------------------------------------------------------
 
 const app = express();
 const PORT = process.env.PORT || 3000;
