@@ -5,7 +5,7 @@ import {
   PermissionsBitField, 
   ChannelType 
 } from 'discord.js';
-import { sendLog } from './logs.js';
+import { sendLog } from './logs.js'; // logs.js doit être dans le même dossier src
 import { TICKET_CATEGORY_ID, SUPPORT_ROLE_ID, TICKET_MESSAGE_CHANNEL_ID } from './config.js';
 
 export const ticketCategory = new Map();
@@ -38,25 +38,20 @@ export async function handleTicket(interaction) {
 
 // Enregistrement des tickets (commande + bouton)
 export function registerTickets(client) {
-
-  // Gestion des commandes
   client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand() && interaction.commandName === 'ticket') {
       await handleTicket(interaction);
     }
 
-    // Gestion des boutons
     if (interaction.isButton() && interaction.customId === 'open_ticket') {
       const guild = interaction.guild;
       if (!guild) return;
 
-      // Vérifie si l'utilisateur a déjà un ticket ouvert
       const existingChannel = guild.channels.cache.find(
         c => c.name === `ticket-${interaction.user.id}`
       );
       if (existingChannel) return interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
 
-      // Crée le salon dans la catégorie ticket
       const channel = await guild.channels.create({
         name: `ticket-${interaction.user.id}`,
         type: ChannelType.GuildText,
@@ -76,7 +71,6 @@ export function registerTickets(client) {
     }
   });
 
-  // Message avec bouton au démarrage
   client.on('ready', async () => {
     const channel = client.channels.cache.get(TICKET_MESSAGE_CHANNEL_ID);
     if (!channel) return console.log('Salon pour le message ticket introuvable');

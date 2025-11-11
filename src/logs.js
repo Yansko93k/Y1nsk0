@@ -1,4 +1,3 @@
-// logs.js
 import { EmbedBuilder } from 'discord.js';
 
 export const logChannels = new Map(); // guildId -> channelId
@@ -29,9 +28,7 @@ export async function sendLog(client, guildId, { action, user, extra }) {
   }
 }
 
-// Nouvelle fonction exportée pour index.js
 export function registerLogs(client) {
-  // Réutilisation de setupLogs
   client.on('guildMemberAdd', member => sendLog(client, member.guild.id, { action: 'Nouveau membre', user: member.user }));
   client.on('guildMemberRemove', member => sendLog(client, member.guild.id, { action: 'Membre quitté', user: member.user }));
   client.on('guildMemberUpdate', (oldMember, newMember) => {

@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { Client, GatewayIntentBits } from 'discord.js';
-import { registerLogs } from './logs.js';
+import { registerLogs, logChannels } from './logs.js';
 import { registerTickets, ticketCategory } from './tickets.js';
 import { registerCaptcha, welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js';
 import { registerCommands } from './commands/index.js';
@@ -32,6 +32,7 @@ for (const [guildId, cfg] of Object.entries(allConfigs)) {
 }
 // ---------------------------------------------------------
 
+// Serveur web minimal pour Render
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot en ligne !'));
@@ -43,6 +44,7 @@ if (!token) {
   process.exit(1);
 }
 
+// Enregistrement des fonctionnalités
 registerLogs(client);
 registerTickets(client);
 registerCaptcha(client);

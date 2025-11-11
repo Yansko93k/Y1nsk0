@@ -1,4 +1,4 @@
-// captcha.js
+// src/captcha.js
 import { sendLog } from './logs.js';
 
 export const welcomeChannels = new Map(); // guildId -> channelId
@@ -19,7 +19,11 @@ export async function handleNewMember(client, member) {
     const captchaCode = Math.floor(1000 + Math.random() * 9000).toString();
     const captchaMessage = await captchaChannel.send({ content: `${member}, envoie ce code : \`${captchaCode}\`` });
 
-    const collector = captchaChannel.createMessageCollector({ filter: m => m.author.id === member.id, time: 120000, max: 1 });
+    const collector = captchaChannel.createMessageCollector({ 
+      filter: m => m.author.id === member.id, 
+      time: 120000, 
+      max: 1 
+    });
 
     collector.on('collect', async (msg) => {
       if (msg.content.trim() === captchaCode) {
@@ -50,7 +54,7 @@ export async function handleNewMember(client, member) {
   }
 }
 
-// Fonction à exporter pour index.js
+// Export pour index.js
 export function registerCaptcha(client) {
   client.on('guildMemberAdd', member => handleNewMember(client, member));
 }

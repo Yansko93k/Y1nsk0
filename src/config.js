@@ -1,8 +1,8 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { logChannels } from '../logs.js';
-import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from '../captcha.js';
-import { ticketCategory } from '../tickets.js';
-import { saveGuildConfig } from '../storage.js';
+import { logChannels } from './logs.js';
+import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js';
+import { ticketCategory } from './tickets.js';
+import { saveGuildConfig } from './storage.js';
 
 // Constantes fixes pour les tickets
 export const TICKET_CATEGORY_ID = 'ID_DE_LA_CATEGORIE_TICKETS'; // catégorie où les tickets seront créés

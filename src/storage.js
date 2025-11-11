@@ -1,6 +1,13 @@
-// storage.js
 import fs from 'fs';
-const filePath = './guildConfigs.json';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Récupère le dossier actuel du fichier
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Chemin absolu vers le fichier JSON
+const filePath = path.join(__dirname, '../guildConfigs.json'); // au même niveau que src/
 
 // Sauvegarde la config d'une guild
 export function saveGuildConfig(guildId, data) {
