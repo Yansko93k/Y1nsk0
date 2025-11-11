@@ -1,6 +1,8 @@
 // commands/config.js
 import { SlashCommandBuilder } from 'discord.js';
-import { logChannels, welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif, ticketCategory } from '../logs.js';
+import { logChannels } from '../logs.js';
+import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from '../captcha.js';
+import { ticketCategory } from '../tickets.js';
 
 export const data = new SlashCommandBuilder()
   .setName('config')
