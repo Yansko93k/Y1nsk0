@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { REST } from '@discordjs/rest';
 import { Routes } from 'discord-api-types/v10';
 import { readdir } from 'fs/promises';
@@ -23,6 +22,7 @@ for (const file of files) {
   }
 }
 
+// Utilisation directe des variables d'environnement Render
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 try {
