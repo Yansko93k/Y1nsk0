@@ -1,13 +1,13 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { logChannels } from '../logs.js';
 import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js';
-import { ticketCategory } from './tickets.js';
+import { ticketCategory } from '../tickets.js';
 import { saveGuildConfig } from './storage.js';
 
 // Constantes fixes pour les tickets
-export const TICKET_CATEGORY_ID = '1309138297733517364'; // catégorie où les tickets seront créés
-export const SUPPORT_ROLE_ID = '371158803674038283'; // rôle qui pourra voir tous les tickets
-export const TICKET_MESSAGE_CHANNEL_ID = '1309245840778596362'; // salon où le message bouton sera envoyé
+export const TICKET_CATEGORY_ID = '1309138297733517364';
+export const SUPPORT_ROLE_ID = '371158803674038283';
+export const TICKET_MESSAGE_CHANNEL_ID = '1309245840778596362';
 
 export const data = new SlashCommandBuilder()
   .setName('config')
@@ -28,10 +28,8 @@ export async function execute(interaction) {
   const roleVerif = interaction.options.getRole('verif')?.id;
   const ticketCat = interaction.options.getChannel('ticketcat')?.id;
 
-  // Sauvegarde dans le fichier JSON
   saveGuildConfig(guildId, { log, welcome, captcha, roleNon, roleVerif, ticketCat });
 
-  // Mets à jour les Maps en mémoire
   if (log) logChannels.set(guildId, log);
   if (welcome) welcomeChannels.set(guildId, welcome);
   if (captcha) captchaChannels.set(guildId, captcha);
