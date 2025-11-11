@@ -5,9 +5,9 @@ import { ticketCategory } from './tickets.js';
 import { saveGuildConfig } from './storage.js';
 
 // Constantes fixes pour les tickets
-export const TICKET_CATEGORY_ID = 'ID_DE_LA_CATEGORIE_TICKETS'; // catégorie où les tickets seront créés
-export const SUPPORT_ROLE_ID = 'ID_DU_ROLE_SUPPORT'; // rôle qui pourra voir tous les tickets
-export const TICKET_MESSAGE_CHANNEL_ID = 'ID_DU_SALON_MESSAGES_TICKETS'; // salon où le message bouton sera envoyé
+export const TICKET_CATEGORY_ID = '1309138297733517364'; // catégorie où les tickets seront créés
+export const SUPPORT_ROLE_ID = '371158803674038283'; // rôle qui pourra voir tous les tickets
+export const TICKET_MESSAGE_CHANNEL_ID = '1309245840778596362'; // salon où le message bouton sera envoyé
 
 export const data = new SlashCommandBuilder()
   .setName('config')
