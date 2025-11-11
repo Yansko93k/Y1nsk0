@@ -1,10 +1,9 @@
-// captcha.js
 import { sendLog } from './logs.js';
 
-export const welcomeChannels = new Map(); // guildId -> channelId
-export const captchaChannels = new Map(); // guildId -> channelId
-export const rolesNonVerif = new Map();   // guildId -> roleId Non vérifié
-export const rolesVerif = new Map();      // guildId -> roleId Vérifié
+export const welcomeChannels = new Map();
+export const captchaChannels = new Map();
+export const rolesNonVerif = new Map();
+export const rolesVerif = new Map();
 
 export async function handleNewMember(client, member) {
   try {
@@ -48,4 +47,9 @@ export async function handleNewMember(client, member) {
   } catch (err) {
     console.error('handleNewMember error:', err);
   }
+}
+
+// ✅ Fonction à exporter pour index.js
+export function registerCaptcha(client) {
+  client.on('guildMemberAdd', member => handleNewMember(client, member));
 }
