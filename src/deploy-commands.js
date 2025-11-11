@@ -1,20 +1,23 @@
-import 'dotenv/config'; // Assure le chargement des variables d'environnement locales
+import 'dotenv/config'; // Charge les variables d'environnement
 import { REST } from '@discordjs/rest';
 import { Routes } from 'discord-api-types/v10';
 import { readdir } from 'fs/promises';
 import path from 'path';
 
 const commands = [];
-// Nouveau chemin vers src/commands
+
+// Chemin vers le dossier des commandes
 const folder = path.join(process.cwd(), 'src', 'commands');
 const files = await readdir(folder);
 
 for (const file of files) {
-  if (!file.endsWith('.js')) continue;
+  // On ignore index.js qui sert à registerCommands
+  if (!file.endsWith('.js') || file === 'index.js') continue;
 
   try {
-    // Import dynamique depuis src/commands
-    const command = await import(`./src/commands/${file}`);
+    // Import dynamique correct pour Node ES Modules
+    const filePath = path.join(folder, file);
+    const command = await import(`file://${filePath}`);
     if (!command.data) {
       console.warn(`⚠️ Le fichier ${file} n'exporte pas de "data"`);
       continue;
@@ -25,17 +28,17 @@ for (const file of files) {
   }
 }
 
-// Récupération des variables d'environnement
+// Variables d'environnement
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 
 if (!token) {
-  console.error('❌ DISCORD_TOKEN non défini ! Ajoute-le dans ton .env ou dans Render.');
+  console.error('❌ DISCORD_TOKEN non défini !');
   process.exit(1);
 }
 if (!clientId) {
-  console.error('❌ CLIENT_ID non défini ! Ajoute-le dans ton .env ou dans Render.');
+  console.error('❌ CLIENT_ID non défini !');
   process.exit(1);
 }
 
