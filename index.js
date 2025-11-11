@@ -25,7 +25,7 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
-  ChannelType
+  ChannelType,
 } from 'discord.js';
 
 const client = new Client({
@@ -33,92 +33,53 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildModeration,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessageReactions,
   ],
 });
 
 client.commands = new Collection();
 
 const token = process.env.DISCORD_TOKEN;
+
 if (!token) {
   console.error("Erreur : le token Discord n'est pas défini !");
   process.exit(1);
 }
+
 client.login(token);
 
 // ======================
 // Maps de configuration (en mémoire)
-//  - si tu veux persister entre redémarrages, sauvegarde ces maps dans un fichier/DB
 // ======================
 const logChannels = new Map();      // guildId -> channelId
 const welcomeChannels = new Map();  // guildId -> channelId
 const captchaChannels = new Map();  // guildId -> channelId
-const ticketButtonChannels = new Map(); // guildId -> channelId where button is posted
-const ticketCategory = new Map();   // guildId -> categoryId
-const openTickets = new Map();      // userId -> channelId (limit 1 ticket per user)
-
-// ======================
-// Déploiement des commandes slash (guild only -> remplace GUILD_ID_HERE)
-// ======================
-client.on('clientReady', async (client) => {
-  console.log(`Client prêt : ${client.user.tag}. Déploiement des commandes...`);
-
-  const commands = [
-    new SlashCommandBuilder()
-      .setName('logs')
-      .setDescription('Définir le salon des logs')
-      .addChannelOption(opt => opt.setName('channel').setDescription('Salon de logs').setRequired(true)),
-
-    new SlashCommandBuilder()
-      .setName('welcome')
-      .setDescription('Définir le salon de bienvenue')
-      .addChannelOption(opt => opt.setName('channel').setDescription('Salon de bienvenue').setRequired(true)),
-
-    new SlashCommandBuilder()
-      .setName('captcha')
-      .setDescription('Définir le salon du captcha')
-      .addChannelOption(opt => opt.setName('channel').setDescription('Salon pour captcha').setRequired(true)),
-
-    new SlashCommandBuilder()
-      .setName('ticket')
-      .setDescription('Poster le bouton de ticket dans un salon et définir la catégorie')
-      .addChannelOption(opt => opt.setName('channel').setDescription('Salon pour le bouton de ticket').setRequired(true))
-      .addChannelOption(opt => opt.setName('category').setDescription('Catégorie où seront créés les tickets').setRequired(false))
-  ].map(cmd => cmd.toJSON());
-
-  const rest = new REST({ version: '10' }).setToken(token);
-
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(client.user.id, '371158107319042048'),
-      { body: commands }
-    );
-    console.log('Commandes slash installées avec succès.');
-  } catch (error) {
-    console.error('Erreur déploiement commandes slash :', error);
-  }
-});
-
+const ticketButtonChannels = new Map();
+const ticketCategory = new Map();
+const openTickets = new Map();
 
 // ======================
 // Helper : créer embed de log
 // ======================
 function makeLogEmbed({ guild, action, user, extra }) {
   const embed = new EmbedBuilder()
-    .setTitle('Log - ' + action)
-    .addFields(
-      { name: 'Utilisateur', value: user ? `${user.tag} (${user.id})` : 'N/A', inline: true },
-      { name: 'Serveur', value: guild ? `${guild.name} (${guild.id})` : 'N/A', inline: true },
-      { name: 'Date', value: new Date().toISOString(), inline: false },
-    )
-    .setDescription(extra || '')
+    .setTitle(`📌 Log: ${action}`)
     .setColor('Blue')
-    .setTimestamp();
+    .setTimestamp()
+    .addFields(
+      { name: 'Utilisateur', value: user ? `${user.tag} (${user.id})` : 'N/A', inline: false },
+      { name: 'Serveur', value: guild ? `${guild.name} (${guild.id})` : 'N/A', inline: false },
+    );
+
+  if (extra) embed.addFields({ name: 'Détails', value: extra });
   return embed;
 }
 
 // ======================
-// sendLog: envoie un embed dans le salon de logs si défini
+// sendLog : envoyer un embed dans le salon configuré
 // ======================
 async function sendLog(guildId, { action, user, extra }) {
   try {
@@ -126,6 +87,7 @@ async function sendLog(guildId, { action, user, extra }) {
     if (!channelId) return;
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
+
     const embed = makeLogEmbed({ guild: channel.guild, action, user, extra });
     await channel.send({ embeds: [embed] }).catch(() => {});
   } catch (err) {
@@ -138,284 +100,205 @@ async function sendLog(guildId, { action, user, extra }) {
 // ======================
 const cooldowns = new Map();
 client.on('messageCreate', (message) => {
-  if (message.author.bot) return;
+  if (message.author.bot || !message.guild) return;
+
   const now = Date.now();
   const cooldown = 5000;
+
   if (cooldowns.has(message.author.id)) {
     const expiration = cooldowns.get(message.author.id) + cooldown;
     if (now < expiration) {
-      // try delete message if possible
       message.delete().catch(() => {});
-      sendLog(message.guild?.id, { action: 'Anti-spam', user: message.author, extra: `Message supprimé pour spam de ${message.author.tag}` });
+      sendLog(message.guild.id, {
+        action: 'Anti-spam',
+        user: message.author,
+        extra: `Message supprimé :\n\`\`\`${message.content}\`\`\``
+      });
       return;
     }
   }
+
   cooldowns.set(message.author.id, now);
   setTimeout(() => cooldowns.delete(message.author.id), cooldown);
 });
 
 // ======================
-// Bienvenue + captcha + rôles
+// Bienvenue + Captcha
 // ======================
 client.on('guildMemberAdd', async (member) => {
   try {
     const guild = member.guild;
     const welcomeChannelId = welcomeChannels.get(guild.id);
     const captchaChannelId = captchaChannels.get(guild.id);
-    const logChannelId = logChannels.get(guild.id);
 
     const welcomeChannel = welcomeChannelId ? guild.channels.cache.get(welcomeChannelId) : guild.systemChannel;
     const captchaChannel = captchaChannelId ? guild.channels.cache.get(captchaChannelId) : welcomeChannel;
-    const logChannel = logChannelId ? guild.channels.cache.get(logChannelId) : null;
 
     if (!welcomeChannel || !captchaChannel || !captchaChannel.isTextBased()) {
-      // si salon non configuré proprement, log et stop
-      sendLog(guild.id, { action: 'GuildMemberAdd', user: member.user, extra: 'Welcome or captcha channel not configured or not text based.' });
+      sendLog(guild.id, { action: 'GuildMemberAdd', user: member.user, extra: 'Salon welcome/captcha invalide — action ignorée.' });
       return;
     }
 
-    // rôles
     const roleNon = guild.roles.cache.find(r => r.name === 'Non vérifié');
     const roleVerif = guild.roles.cache.find(r => r.name === 'Vérifié');
 
-    // ajouter rôle non vérifié si existe
-    if (roleNon) {
-      await member.roles.add(roleNon).catch(err => {
-        sendLog(guild.id, { action: 'RoleAddFailed', user: member.user, extra: `Impossible d'ajouter rôle Non vérifié: ${String(err)}` });
-      });
-    }
+    if (roleNon) await member.roles.add(roleNon).catch(() => {});
+    member.send(`Bienvenue sur **${guild.name}** ! Valide ton captcha dans ${captchaChannel}.`).catch(() => {});
+    await welcomeChannel.send(`Bienvenue ${member} !`);
 
-    // MP de bienvenue
-    try {
-      await member.send(`Bienvenue sur ${guild.name} ! Pour accéder au serveur, merci de valider le captcha dans ${captchaChannel}.\nVous recevrez le rôle "Vérifié" une fois validé.`);
-    } catch {
-      // utilisateur peut avoir les DM fermés
-      sendLog(guild.id, { action: 'DMFail', user: member.user, extra: 'Impossible d’envoyer le MP de bienvenue (DM fermé).' });
-    }
-
-    // message de bienvenue public
-    await welcomeChannel.send({ content: `Bienvenue ${member} sur le serveur !` }).catch(() => {});
-
-    // Captcha : générer code
     const captchaCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const captchaMessage = await captchaChannel.send({ content: `${member}, envoie le code suivant : \`${captchaCode}\`` });
 
-    const captchaMessage = await captchaChannel.send({
-      content: `${member}, envoyez le code suivant en message privé (dans ce salon) pour valider : \`${captchaCode}\``
-    }).catch(err => {
-      sendLog(guild.id, { action: 'CaptchaSendFail', user: member.user, extra: `Impossible d'envoyer message captcha: ${String(err)}` });
-      return null;
-    });
-    if (!captchaMessage) return;
-
-    // collector pour la réponse (dans le canal captcha)
-    const collector = captchaChannel.createMessageCollector({
-      filter: m => m.author.id === member.id,
-      max: 1,
-      time: 120000
-    });
+    const collector = captchaChannel.createMessageCollector({ filter: m => m.author.id === member.id, time: 120000, max: 1 });
 
     collector.on('collect', async (msg) => {
-      try {
-        if (msg.content.trim() === captchaCode) {
-          // suppression messages (captcha + réponse)
-          await msg.delete().catch(() => {});
-          await captchaMessage.delete().catch(() => {});
-
-          // changer rôles
-          if (roleNon) await member.roles.remove(roleNon).catch(() => {});
-          if (roleVerif) await member.roles.add(roleVerif).catch(() => {});
-
-          // log succès
-          await sendLog(guild.id, {
-            action: 'Captcha Validé',
-            user: member.user,
-            extra: `Captcha : ${captchaCode}`
-          });
-
-          // DM confirmation
-          try { await member.send(`Captcha validé ! Vous êtes maintenant vérifié sur ${guild.name}.`); } catch {}
-
-        } else {
-          // Mauvais code -> kick
-          await msg.delete().catch(() => {});
-          await captchaMessage.delete().catch(() => {});
-          if (member.kickable) await member.kick('Captcha non validé (mauvais code)').catch(() => {});
-          await sendLog(guild.id, { action: 'Captcha Échoué', user: member.user, extra: `Mauvais code entré: "${msg.content}" (attendu ${captchaCode})` });
-        }
-      } catch (err) {
-        console.error('collector.collect error:', err);
+      if (msg.content.trim() === captchaCode) {
+        msg.delete().catch(() => {});
+        captchaMessage.delete().catch(() => {});
+        if (roleNon) member.roles.remove(roleNon).catch(() => {});
+        if (roleVerif) member.roles.add(roleVerif).catch(() => {});
+        sendLog(guild.id, { action: 'Captcha validé', user: member.user, extra: `Code : ${captchaCode}` });
+        member.send(`Captcha validé ! Bienvenue !`).catch(() => {});
+      } else {
+        msg.delete().catch(() => {});
+        captchaMessage.delete().catch(() => {});
+        if (member.kickable) await member.kick('Captcha incorrect');
+        sendLog(guild.id, { action: 'Captcha échoué', user: member.user, extra: `Entré : ${msg.content} — Attendu : ${captchaCode}` });
       }
     });
 
     collector.on('end', async (collected) => {
-      try {
-        if (collected.size === 0) {
-          // timeout
-          await captchaMessage.delete().catch(() => {});
-          if (member.kickable) await member.kick('Captcha non validé (timeout)').catch(() => {});
-          await sendLog(guild.id, { action: 'Captcha Timeout', user: member.user, extra: `Code: ${captchaCode}` });
-        }
-      } catch (err) {
-        console.error('collector.end error:', err);
+      if (collected.size === 0) {
+        captchaMessage.delete().catch(() => {});
+        if (member.kickable) await member.kick('Timeout captcha');
+        sendLog(guild.id, { action: 'Captcha timeout', user: member.user, extra: `Code attendu : ${captchaCode}` });
       }
     });
-
   } catch (err) {
     console.error('guildMemberAdd error:', err);
   }
 });
 
 // ======================
-// Gestion des interactions (slash + boutons)
+// Interactions Slash + Buttons (Tickets)
 // ======================
 client.on('interactionCreate', async (interaction) => {
-  try {
-    // --------- Slash commands ----------
-    if (interaction.isChatInputCommand()) {
-      const name = interaction.commandName;
-      // UTILISER flags:64 pour réponses éphémères (aucun warning)
-      if (name === 'logs') {
-        const ch = interaction.options.getChannel('channel');
-        if (!ch || !ch.isTextBased()) return interaction.reply({ content: 'Merci de fournir un salon textuel.', flags: 64 });
-        logChannels.set(interaction.guild.id, ch.id);
-        await interaction.reply({ content: `Salon de logs défini : ${ch}`, flags: 64 });
-        await sendLog(interaction.guild.id, { action: 'Config logs', user: interaction.user, extra: `Salon logs défini: ${ch.id}` });
-        return;
-      }
+  if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
 
-      if (name === 'welcome') {
-        const ch = interaction.options.getChannel('channel');
-        if (!ch || !ch.isTextBased()) return interaction.reply({ content: 'Merci de fournir un salon textuel.', flags: 64 });
-        welcomeChannels.set(interaction.guild.id, ch.id);
-        await interaction.reply({ content: `Salon de bienvenue défini : ${ch}`, flags: 64 });
-        await sendLog(interaction.guild.id, { action: 'Config welcome', user: interaction.user, extra: `Salon welcome défini: ${ch.id}` });
-        return;
-      }
-
-      if (name === 'captcha') {
-        const ch = interaction.options.getChannel('channel');
-        if (!ch || !ch.isTextBased()) return interaction.reply({ content: 'Merci de fournir un salon textuel.', flags: 64 });
-        captchaChannels.set(interaction.guild.id, ch.id);
-        await interaction.reply({ content: `Salon de captcha défini : ${ch}`, flags: 64 });
-        await sendLog(interaction.guild.id, { action: 'Config captcha', user: interaction.user, extra: `Salon captcha défini: ${ch.id}` });
-        return;
-      }
-
-      if (name === 'ticket') {
-        const buttonChannel = interaction.options.getChannel('channel');
-        const category = interaction.options.getChannel('category'); // facultatif
-        if (!buttonChannel || !buttonChannel.isTextBased()) return interaction.reply({ content: 'Merci de fournir un salon textuel pour le bouton.', flags: 64 });
-
-        ticketButtonChannels.set(interaction.guild.id, buttonChannel.id);
-        if (category && category.type === ChannelType.GuildCategory) ticketCategory.set(interaction.guild.id, category.id);
-
-        // créer le bouton et l'envoyer
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('create_ticket').setLabel('Créer un ticket').setStyle(ButtonStyle.Primary)
-        );
-
-        await buttonChannel.send({ content: 'Cliquez sur le bouton ci-dessous pour créer un ticket.', components: [row] }).catch(err => {
-          console.error('send ticket button error:', err);
-        });
-
-        await interaction.reply({ content: `Bouton de ticket posté dans ${buttonChannel}${category ? `, catégorie: ${category.name}` : ''}`, flags: 64 });
-        await sendLog(interaction.guild.id, { action: 'Config ticket', user: interaction.user, extra: `Button dans: ${buttonChannel.id} category: ${category?.id || 'none'}` });
-        return;
-      }
+  // Exemple Slash /ping
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'ping') {
+      await interaction.reply({ content: 'Pong !', ephemeral: true });
     }
+  }
 
-    // --------- Buttons ----------
-    if (interaction.isButton()) {
-      // Pour buttons, on répond rapidement pour éviter Unknown interaction.
-      // create_ticket: créer salon ticket, limiter 1 ticket par user, mettre dans la catégorie si configurée
-      if (interaction.customId === 'create_ticket') {
-        // empêcher spam multi-click : deferUpdate (répond sans message)
-        await interaction.deferReply({ flags: 64 }).catch(() => {});
+  // Exemple Button ticket
+  if (interaction.isButton()) {
+    const guild = interaction.guild;
+    const userId = interaction.user.id;
+    const categoryId = ticketCategory.get(guild.id);
+    if (!categoryId) return interaction.reply({ content: 'Catégorie ticket non définie.', ephemeral: true });
 
-        const userId = interaction.user.id;
-        if (openTickets.has(userId)) {
-          await interaction.editReply({ content: 'Vous avez déjà un ticket ouvert !' }).catch(() => {});
-          return;
-        }
+    const open = openTickets.get(userId);
+    if (open) return interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
 
-        const guild = interaction.guild;
-        const categoryId = ticketCategory.get(guild.id);
-        const ticketNameBase = `ticket-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9\-]/g, '-').slice(0, 90);
-        let ticketName = ticketNameBase;
-        // éviter doublons en ajoutant compteur si nécessaire
-        let counter = 1;
-        while (guild.channels.cache.find(c => c.name === ticketName)) {
-          ticketName = `${ticketNameBase}-${counter++}`;
-        }
+    const channel = await guild.channels.create({
+      name: `ticket-${interaction.user.username}`,
+      type: ChannelType.GuildText,
+      parent: categoryId,
+      permissionOverwrites: [
+        { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: userId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+      ],
+    });
 
-        // créer le channel dans la catégorie si défini
-        const channelOptions = {
-          name: ticketName,
-          type: ChannelType.GuildText,
-          permissionOverwrites: [
-            { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-            { id: userId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-          ],
-        };
-        if (categoryId) channelOptions.parent = categoryId;
-
-        let ticketChannel;
-        try {
-          ticketChannel = await guild.channels.create(channelOptions);
-        } catch (err) {
-          console.error('create ticket channel error:', err);
-          await interaction.editReply({ content: 'Erreur: impossible de créer le salon de ticket (permissions manquantes).' }).catch(() => {});
-          return;
-        }
-
-        openTickets.set(userId, ticketChannel.id);
-
-        // envoyer message d'ouverture ticket avec bouton fermer
-        const closeRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('close_ticket').setLabel('Fermer le ticket').setStyle(ButtonStyle.Danger)
-        );
-
-        await ticketChannel.send({ content: `Bonjour ${interaction.user}, votre ticket a été créé !`, components: [closeRow] }).catch(() => {});
-
-        await interaction.editReply({ content: `Ticket créé : ${ticketChannel}` }).catch(() => {});
-        await sendLog(guild.id, { action: 'Ticket créé', user: interaction.user, extra: `Channel: ${ticketChannel.id}` });
-        return;
-      }
-
-      // close_ticket
-      if (interaction.customId === 'close_ticket') {
-        await interaction.deferReply({ flags: 64 }).catch(() => {});
-        const ch = interaction.channel;
-        const guild = interaction.guild;
-
-        // trouver utilisateur qui a ouvert ce ticket via openTickets map
-        const entry = [...openTickets.entries()].find(([uid, cid]) => cid === ch.id);
-        if (entry) openTickets.delete(entry[0]);
-
-        // supprimer salon
-        if (ch && ch.name && ch.name.startsWith('ticket-')) {
-          await ch.delete().catch(async (err) => {
-            console.error('delete ticket channel error:', err);
-            await interaction.editReply({ content: 'Impossible de supprimer le salon (permissions manquantes).' }).catch(() => {});
-          });
-          await sendLog(guild.id, { action: 'Ticket fermé', user: interaction.user, extra: `Channel supprimé: ${ch.id}` });
-        } else {
-          await interaction.editReply({ content: 'Ce bouton ne peut être utilisé que dans un salon de ticket.' }).catch(() => {});
-        }
-        return;
-      }
-    }
-
-  } catch (err) {
-    console.error('interactionCreate error:', err);
+    openTickets.set(userId, channel.id);
+    interaction.reply({ content: `Ticket créé : ${channel}`, ephemeral: true });
   }
 });
 
 // ======================
-// Fonction pour envoyer les logs via sendLog (définie plus haut)
+// Logs avancés
 // ======================
-// (déjà définie)
 
-// ======================
-// Fin du fichier
-// ======================
+// Messages
+client.on('messageDelete', (message) => {
+  if (!message.guild || message.author?.bot) return;
+  sendLog(message.guild.id, { action: 'Message supprimé', user: message.author, extra: `Salon : ${message.channel.name}\nContenu : ${message.content || 'N/A'}` });
+});
+
+client.on('messageUpdate', (oldMessage, newMessage) => {
+  if (!oldMessage.guild || oldMessage.author?.bot) return;
+  if (oldMessage.content === newMessage.content) return;
+  sendLog(oldMessage.guild.id, { action: 'Message modifié', user: oldMessage.author, extra: `Salon : ${oldMessage.channel.name}\nAvant : ${oldMessage.content}\nAprès : ${newMessage.content}` });
+});
+
+client.on('messageDeleteBulk', (messages) => {
+  const guild = messages.first()?.guild;
+  if (!guild) return;
+  sendLog(guild.id, { action: 'Suppression massive de messages', extra: `Nombre : ${messages.size}` });
+});
+
+// Membres
+client.on('guildMemberUpdate', (oldMember, newMember) => {
+  if (oldMember.nickname !== newMember.nickname) {
+    sendLog(newMember.guild.id, { action: 'Pseudo modifié', user: newMember.user, extra: `Ancien : ${oldMember.nickname || oldMember.user.username}\nNouveau : ${newMember.nickname || newMember.user.username}` });
+  }
+  const oldRoles = oldMember.roles.cache.map(r => r.id).join(',');
+  const newRoles = newMember.roles.cache.map(r => r.id).join(',');
+  if (oldRoles !== newRoles) sendLog(newMember.guild.id, { action: 'Rôles modifiés', user: newMember.user, extra: `Avant : ${oldRoles}\nAprès : ${newRoles}` });
+});
+
+client.on('guildMemberRemove', (member) => sendLog(member.guild.id, { action: 'Membre quitté', user: member.user, extra: `ID : ${member.id}` }));
+client.on('guildBanAdd', (ban) => sendLog(ban.guild.id, { action: 'Ban', user: ban.user, extra: 'Utilisateur banni.' }));
+client.on('guildBanRemove', (ban) => sendLog(ban.guild.id, { action: 'Unban', user: ban.user, extra: 'Utilisateur débanni.' }));
+
+// Channels
+client.on('channelCreate', (channel) => sendLog(channel.guild.id, { action: 'Channel créé', extra: `Nom : ${channel.name} | Type : ${channel.type}` }));
+client.on('channelDelete', (channel) => sendLog(channel.guild.id, { action: 'Channel supprimé', extra: `Nom : ${channel.name} | Type : ${channel.type}` }));
+client.on('channelUpdate', (oldChannel, newChannel) => {
+  const changes = [];
+  if (oldChannel.name !== newChannel.name) changes.push(`Nom : ${oldChannel.name} -> ${newChannel.name}`);
+  if (oldChannel.topic !== newChannel.topic) changes.push(`Topic : ${oldChannel.topic} -> ${newChannel.topic}`);
+  if (oldChannel.rateLimitPerUser !== newChannel.rateLimitPerUser) changes.push(`Slowmode : ${oldChannel.rateLimitPerUser}s -> ${newChannel.rateLimitPerUser}s`);
+  if (changes.length) sendLog(newChannel.guild.id, { action: 'Channel modifié', extra: changes.join('\n') });
+});
+
+// Roles
+client.on('roleCreate', (role) => sendLog(role.guild.id, { action: 'Rôle créé', extra: `Nom : ${role.name} | ID : ${role.id}` }));
+client.on('roleDelete', (role) => sendLog(role.guild.id, { action: 'Rôle supprimé', extra: `Nom : ${role.name} | ID : ${role.id}` }));
+client.on('roleUpdate', (oldRole, newRole) => {
+  const changes = [];
+  if (oldRole.name !== newRole.name) changes.push(`Nom : ${oldRole.name} -> ${newRole.name}`);
+  if (oldRole.color !== newRole.color) changes.push(`Couleur : ${oldRole.color} -> ${newRole.color}`);
+  if (changes.length) sendLog(newRole.guild.id, { action: 'Rôle modifié', extra: changes.join('\n') });
+});
+
+// Vocaux
+client.on('voiceStateUpdate', (oldState, newState) => {
+  const user = newState.member?.user || oldState.member?.user;
+  const guildId = newState.guild.id;
+  if (!user) return;
+
+  if (!oldState.channel && newState.channel) sendLog(guildId, { action: 'Vocal: entrée', user, extra: `Salon : ${newState.channel.name}` });
+  else if (oldState.channel && !newState.channel) sendLog(guildId, { action: 'Vocal: sortie', user, extra: `Salon : ${oldState.channel.name}` });
+  else if (oldState.channelId !== newState.channelId) sendLog(guildId, { action: 'Vocal: déplacement', user, extra: `De : ${oldState.channel.name} -> ${newState.channel.name}` });
+
+  if (oldState.serverMute !== newState.serverMute) sendLog(guildId, { action: `Vocal: ${newState.serverMute ? 'mute' : 'unmute'}`, user });
+  if (oldState.serverDeaf !== newState.serverDeaf) sendLog(guildId, { action: `Vocal: ${newState.serverDeaf ? 'deaf' : 'undeaf'}`, user });
+  if (oldState.selfMute !== newState.selfMute) sendLog(guildId, { action: `Vocal: ${newState.selfMute ? 'mute micro' : 'unmute micro'}`, user });
+  if (oldState.selfDeaf !== newState.selfDeaf) sendLog(guildId, { action: `Vocal: ${newState.selfDeaf ? 'deaf' : 'undeaf'}`, user });
+  if (oldState.streaming !== newState.streaming) sendLog(guildId, { action: `Vocal: ${newState.streaming ? 'stream' : 'stop stream'}`, user });
+  if (oldState.selfVideo !== newState.selfVideo) sendLog(guildId, { action: `Vocal: ${newState.selfVideo ? 'cam on' : 'cam off'}`, user });
+});
+
+// Utilisateur
+client.on('userUpdate', (oldUser, newUser) => {
+  const guilds = client.guilds.cache.filter(g => g.members.cache.has(newUser.id));
+  if (oldUser.username !== newUser.username) guilds.forEach(g => sendLog(g.id, { action: 'Nom Discord modifié', user: newUser, extra: `Ancien : ${oldUser.username}\nNouveau : ${newUser.username}` }));
+  if (oldUser.avatar !== newUser.avatar) guilds.forEach(g => sendLog(g.id, { action: 'Avatar modifié', user: newUser }));
+  if (oldUser.banner !== newUser.banner) guilds.forEach(g => sendLog(g.id, { action: 'Bannière modifiée', user: newUser }));
+});
+
+// Pins
+client.on('channelPinsUpdate', (channel) => sendLog(channel.guild.id, { action: 'Pins modifiés', extra: `Salon : ${channel.name}` }));
