@@ -4,7 +4,8 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import { registerLogs } from './logs.js';
 import { registerTickets } from './tickets.js';
 import { registerCaptcha } from './captcha.js';
-import { registerCommands } from './commands.js';
+import { registerCommands } from './commands/config.js';
+
 
 /** 
  * @type {import('discord.js').Client & { commands: Map<string, any> }} 
