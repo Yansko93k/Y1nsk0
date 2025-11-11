@@ -5,14 +5,16 @@ import { readdir } from 'fs/promises';
 import path from 'path';
 
 const commands = [];
-const folder = path.join(process.cwd(), 'commands');
+// Nouveau chemin vers src/commands
+const folder = path.join(process.cwd(), 'src', 'commands');
 const files = await readdir(folder);
 
 for (const file of files) {
   if (!file.endsWith('.js')) continue;
 
   try {
-    const command = await import(`./commands/${file}`);
+    // Import dynamique depuis src/commands
+    const command = await import(`./src/commands/${file}`);
     if (!command.data) {
       console.warn(`⚠️ Le fichier ${file} n'exporte pas de "data"`);
       continue;
