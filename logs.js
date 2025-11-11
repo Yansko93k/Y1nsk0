@@ -29,9 +29,9 @@ export async function sendLog(client, guildId, { action, user, extra }) {
   }
 }
 
-// Exemple d'utilisation pour tous les events
-export function setupLogs(client) {
-  // Membres
+// Nouvelle fonction exportée pour index.js
+export function registerLogs(client) {
+  // Réutilisation de setupLogs
   client.on('guildMemberAdd', member => sendLog(client, member.guild.id, { action: 'Nouveau membre', user: member.user }));
   client.on('guildMemberRemove', member => sendLog(client, member.guild.id, { action: 'Membre quitté', user: member.user }));
   client.on('guildMemberUpdate', (oldMember, newMember) => {
@@ -43,7 +43,6 @@ export function setupLogs(client) {
     if (changes.length) sendLog(client, newMember.guild.id, { action: 'Membre modifié', user: newMember.user, extra: changes.join('\n') });
   });
 
-  // Messages
   client.on('messageCreate', m => { if (!m.author.bot) sendLog(client, m.guild.id, { action: 'Message créé', user: m.author, extra: m.content }) });
   client.on('messageUpdate', (oldM, newM) => {
     if (oldM.content !== newM.content) sendLog(client, oldM.guild.id, { action: 'Message modifié', user: oldM.author, extra: `Avant: ${oldM.content}\nAprès: ${newM.content}` });
@@ -54,7 +53,6 @@ export function setupLogs(client) {
     if (guild) sendLog(client, guild.id, { action: 'Suppression massive', extra: `Nombre: ${msgs.size}` });
   });
 
-  // Channels
   client.on('channelCreate', ch => sendLog(client, ch.guild.id, { action: 'Salon créé', extra: `${ch.name} | Type: ${ch.type}` }));
   client.on('channelDelete', ch => sendLog(client, ch.guild.id, { action: 'Salon supprimé', extra: `${ch.name} | Type: ${ch.type}` }));
   client.on('channelUpdate', (oldCh, newCh) => {
@@ -65,7 +63,6 @@ export function setupLogs(client) {
     if (changes.length) sendLog(client, newCh.guild.id, { action: 'Salon modifié', extra: changes.join('\n') });
   });
 
-  // Roles
   client.on('roleCreate', r => sendLog(client, r.guild.id, { action: 'Rôle créé', extra: `${r.name} | ID: ${r.id}` }));
   client.on('roleDelete', r => sendLog(client, r.guild.id, { action: 'Rôle supprimé', extra: `${r.name} | ID: ${r.id}` }));
   client.on('roleUpdate', (oldR, newR) => {
@@ -75,7 +72,6 @@ export function setupLogs(client) {
     if (changes.length) sendLog(client, newR.guild.id, { action: 'Rôle modifié', extra: changes.join('\n') });
   });
 
-  // Vocaux
   client.on('voiceStateUpdate', (oldS, newS) => {
     const user = newS.member?.user || oldS.member?.user;
     const guildId = newS.guild.id;
@@ -87,7 +83,6 @@ export function setupLogs(client) {
     if (oldS.serverDeaf !== newS.serverDeaf) sendLog(client, guildId, { action: `Deaf: ${newS.serverDeaf}`, user });
   });
 
-  // Bans
   client.on('guildBanAdd', ban => sendLog(client, ban.guild.id, { action: 'Ban', user: ban.user }));
   client.on('guildBanRemove', ban => sendLog(client, ban.guild.id, { action: 'Unban', user: ban.user }));
 }
