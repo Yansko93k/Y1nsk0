@@ -22,20 +22,32 @@ for (const file of files) {
   }
 }
 
-// Utilisation directe des variables d'environnement Render
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+const token = process.env.DISCORD_TOKEN;
+const clientId = process.env.CLIENT_ID;
+const guildId = process.env.GUILD_ID;
+
+if (!token) {
+  console.error('❌ DISCORD_TOKEN non défini !');
+  process.exit(1);
+}
+if (!clientId) {
+  console.error('❌ CLIENT_ID non défini !');
+  process.exit(1);
+}
+
+const rest = new REST({ version: '10' }).setToken(token);
 
 try {
   console.log('🚀 Déploiement des commandes...');
-  if (process.env.GUILD_ID) {
+  if (guildId) {
     await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+      Routes.applicationGuildCommands(clientId, guildId),
       { body: commands }
     );
     console.log('✅ Commandes déployées sur le serveur !');
   } else {
     await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
+      Routes.applicationCommands(clientId),
       { body: commands }
     );
     console.log('✅ Commandes globales déployées !');
