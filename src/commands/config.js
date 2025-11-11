@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { logChannels } from '../logs.js';
-import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js'; // si captcha.js est dans commands
+import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from '../captcha.js'; // si captcha.js est dans commands
 import { ticketCategory } from '../tickets.js';
 import { saveGuildConfig } from '../storage.js';
 
