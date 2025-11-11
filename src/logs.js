@@ -73,9 +73,14 @@ export function registerLogs(client) {
     const user = newS.member?.user || oldS.member?.user;
     const guildId = newS.guild.id;
     if (!user) return;
-    if (!oldS.channel && newS.channel) sendLog(client, guildId, { action: 'Entrée vocal', user, extra: `Salon: ${newS.channel.name}` });
-    if (oldS.channel && !newS.channel) sendLog(client, guildId, { action: 'Sortie vocal', user, extra: `Salon: ${oldS.channel.name}` });
-    if (oldS.channelId !== newS.channelId) sendLog(client, guildId, { action: 'Déplacement vocal', user, extra: `${oldS.channel.name} → ${newS.channel.name}` });
+
+    const oldName = oldS.channel ? oldS.channel.name : 'aucun';
+    const newName = newS.channel ? newS.channel.name : 'aucun';
+
+    if (!oldS.channel && newS.channel) sendLog(client, guildId, { action: 'Entrée vocal', user, extra: `Salon: ${newName}` });
+    else if (oldS.channel && !newS.channel) sendLog(client, guildId, { action: 'Sortie vocal', user, extra: `Salon: ${oldName}` });
+    else if (oldS.channelId !== newS.channelId) sendLog(client, guildId, { action: 'Déplacement vocal', user, extra: `${oldName} → ${newName}` });
+
     if (oldS.serverMute !== newS.serverMute) sendLog(client, guildId, { action: `Mute: ${newS.serverMute}`, user });
     if (oldS.serverDeaf !== newS.serverDeaf) sendLog(client, guildId, { action: `Deaf: ${newS.serverDeaf}`, user });
   });
