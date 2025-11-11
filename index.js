@@ -5,7 +5,7 @@ import { registerLogs } from './logs.js';
 import { registerTickets, ticketCategory } from './tickets.js';
 import { registerCaptcha, welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js';
 import { registerCommands } from './commands/index.js';
-import { saveGuildConfig, loadAllConfigs } from './storage.js';
+import { loadAllConfigs, saveGuildConfig } from './storage.js';
 
 const client = new Client({
   intents: [
