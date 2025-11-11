@@ -1,9 +1,8 @@
-// tickets.js
 import { PermissionsBitField, ChannelType } from 'discord.js';
 import { sendLog } from './logs.js';
 
-export const ticketCategory = new Map(); // guildId -> categoryId
-export const openTickets = new Map();    // userId -> channelId
+export const ticketCategory = new Map();
+export const openTickets = new Map();
 
 export async function handleTicket(interaction) {
   const guild = interaction.guild;
@@ -26,4 +25,13 @@ export async function handleTicket(interaction) {
   openTickets.set(userId, channel.id);
   interaction.reply({ content: `Ticket créé : ${channel}`, ephemeral: true });
   sendLog(interaction.client, guild.id, { action: 'Ticket créé', user: interaction.user });
+}
+
+export function registerTickets(client) {
+  client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === 'ticket') {
+      await handleTicket(interaction);
+    }
+  });
 }
