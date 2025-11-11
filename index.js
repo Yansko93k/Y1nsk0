@@ -54,9 +54,9 @@ client.login(token);
 // ======================
 // Maps de configuration (en mémoire)
 // ======================
-const logChannels = new Map();      // guildId -> channelId
-const welcomeChannels = new Map();  // guildId -> channelId
-const captchaChannels = new Map();  // guildId -> channelId
+const logChannels = new Map();
+const welcomeChannels = new Map();
+const captchaChannels = new Map();
 const ticketButtonChannels = new Map();
 const ticketCategory = new Map();
 const openTickets = new Map();
@@ -180,7 +180,31 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ======================
-// Interactions Slash + Buttons (Tickets)
+// Déploiement des commandes & Ready
+// ======================
+client.once('ready', async () => {
+  console.log(`Connecté en tant que ${client.user.tag}`);
+
+  // Exemple : enregistrer une commande /ping pour le serveur actuel
+  const commands = [
+    new SlashCommandBuilder().setName('ping').setDescription('Répond pong !').toJSON(),
+  ];
+
+  const rest = new REST({ version: '10' }).setToken(token);
+  try {
+    console.log('Déploiement des commandes...');
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      { body: commands }
+    );
+    console.log('Commandes déployées !');
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+// ======================
+// Interaction Slash + Buttons
 // ======================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
@@ -216,6 +240,10 @@ client.on('interactionCreate', async (interaction) => {
     interaction.reply({ content: `Ticket créé : ${channel}`, ephemeral: true });
   }
 });
+
+// ======================
+
+client.login(token);
 
 // ======================
 // Logs avancés
