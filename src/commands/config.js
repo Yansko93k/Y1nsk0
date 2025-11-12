@@ -4,7 +4,7 @@ import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from '../
 import { ticketCategory } from '../tickets.js';
 import { saveGuildConfig } from '../storage.js';
 
-// Constantes fixes pour les tickets
+// Constantes par défaut
 export const TICKET_CATEGORY_ID = '1309138297733517364';
 export const SUPPORT_ROLE_ID = '1311063281838067712';
 export const TICKET_MESSAGE_CHANNEL_ID = '1309245840778596362';
@@ -17,11 +17,12 @@ export const data = new SlashCommandBuilder()
   .addChannelOption(opt => opt.setName('captcha').setDescription('Salon du captcha'))
   .addRoleOption(opt => opt.setName('nonverif').setDescription('Rôle Non vérifié'))
   .addRoleOption(opt => opt.setName('verif').setDescription('Rôle Vérifié'))
+  .addRoleOption(opt => opt.setName('support').setDescription('Rôle Support')) // Ajout du rôle support
   .addChannelOption(opt => opt.setName('ticketcat').setDescription('Catégorie tickets'));
 
 export async function execute(interaction) {
   try {
-    // ⚡ Défère la réponse immédiatement pour éviter l'erreur Unknown interaction
+    // Défère la réponse immédiatement pour éviter l'erreur Unknown interaction
     await interaction.deferReply({ flags: 64 });
 
     const guildId = interaction.guild.id;
@@ -32,6 +33,7 @@ export async function execute(interaction) {
     const roleNon = interaction.options.getRole('nonverif')?.id || rolesNonVerif.get(guildId);
     const roleVerif = interaction.options.getRole('verif')?.id || rolesVerif.get(guildId);
     const ticketCat = interaction.options.getChannel('ticketcat')?.id || ticketCategory.get(guildId);
+    const supportRoleId = interaction.options.getRole('support')?.id || SUPPORT_ROLE_ID;
 
     // Mise à jour des Maps en mémoire
     if (log) logChannels.set(guildId, log);
@@ -41,17 +43,16 @@ export async function execute(interaction) {
     if (roleVerif) rolesVerif.set(guildId, roleVerif);
     if (ticketCat) ticketCategory.set(guildId, ticketCat);
 
-    // Sauvegarde persistante
-    saveGuildConfig(guildId, { log, welcome, captcha, roleNon, roleVerif, ticketCat });
+    // Sauvegarde persistante avec supportRoleId
+    saveGuildConfig(guildId, { log, welcome, captcha, roleNon, roleVerif, ticketCat, supportRoleId });
 
     // Envoi du message final via editReply
     await interaction.editReply({
       content: '✅ Configuration mise à jour et sauvegardée !',
-      flags: 64, // remplace ephemeral: true
+      flags: 64,
     });
   } catch (err) {
     console.error('Erreur dans /config :', err);
-
     try {
       if (interaction.replied || interaction.deferred) {
         await interaction.editReply({

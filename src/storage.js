@@ -1,6 +1,6 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 
 // Récupère le dossier actuel du fichier
 const __filename = fileURLToPath(import.meta.url);
@@ -8,27 +8,59 @@ const __dirname = path.dirname(__filename);
 
 // Dossier pour stocker les configs
 const dataDir = path.join(__dirname, '../data');
+import fs from 'fs';
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 
-// Chemin absolu vers le fichier JSON
-const filePath = path.join(dataDir, 'guildConfigs.json');
+// Chemin du fichier SQLite
+const dbPath = path.join(dataDir, 'guildConfigs.sqlite');
 
-// Sauvegarde la config d'une guild
+// Initialise la base de données
+const db = new Database(dbPath);
+
+// Crée la table si elle n'existe pas
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS guild_configs (
+    guildId TEXT PRIMARY KEY,
+    log TEXT,
+    welcome TEXT,
+    captcha TEXT,
+    roleNon TEXT,
+    roleVerif TEXT,
+    ticketCat TEXT
+  )
+`).run();
+
+// Sauvegarde ou met à jour la config d’une guild
 export function saveGuildConfig(guildId, data) {
-  const configs = loadAllConfigs();
-  configs[guildId] = { ...(configs[guildId] || {}), ...data };
-  fs.writeFileSync(filePath, JSON.stringify(configs, null, 2));
-  console.log(`🔹 Config sauvegardée pour ${guildId}:`, configs[guildId]);
+  const stmt = db.prepare(`
+    INSERT INTO guild_configs (guildId, log, welcome, captcha, roleNon, roleVerif, ticketCat)
+    VALUES (@guildId, @log, @welcome, @captcha, @roleNon, @roleVerif, @ticketCat)
+    ON CONFLICT(guildId) DO UPDATE SET
+      log=@log,
+      welcome=@welcome,
+      captcha=@captcha,
+      roleNon=@roleNon,
+      roleVerif=@roleVerif,
+      ticketCat=@ticketCat
+  `);
+  stmt.run({ guildId, ...data });
+  console.log(`🔹 Config sauvegardée pour ${guildId}:`, data);
 }
 
-// Charge la config d'une guild
+// Charge la config d’une guild
 export function loadGuildConfig(guildId) {
-  const configs = loadAllConfigs();
-  return configs[guildId] || {};
+  const stmt = db.prepare('SELECT * FROM guild_configs WHERE guildId = ?');
+  return stmt.get(guildId) || {};
 }
 
 // Charge toutes les configs
 export function loadAllConfigs() {
-  if (!fs.existsSync(filePath)) return {};
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const stmt = db.prepare('SELECT * FROM guild_configs');
+  const rows = stmt.all();
+  const result = {};
+  for (const row of rows) {
+    const { guildId, ...data } = row;
+    result[guildId] = data;
+  }
+  return result;
 }

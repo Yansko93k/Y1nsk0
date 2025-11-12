@@ -6,7 +6,8 @@ import {
   ChannelType,
 } from 'discord.js';
 import { sendLog } from './logs.js';
-import { TICKET_CATEGORY_ID, SUPPORT_ROLE_ID, TICKET_MESSAGE_CHANNEL_ID } from './commands/config.js';
+import { TICKET_MESSAGE_CHANNEL_ID } from './commands/config.js';
+import { loadGuildConfig } from './storage.js';
 
 export const ticketCategory = new Map();
 export const openTickets = new Map();
@@ -14,13 +15,30 @@ export const openTickets = new Map();
 export async function handleTicket(interaction) {
   const guild = interaction.guild;
   const userId = interaction.user.id;
-  const categoryId = ticketCategory.get(guild.id) || TICKET_CATEGORY_ID;
+
+  // Récupère la config depuis la base SQLite si la Map est vide
+  let categoryId = ticketCategory.get(guild.id);
+  let supportRoleId;
+  if (!categoryId) {
+    const config = loadGuildConfig(guild.id);
+    categoryId = config.ticketCat || null;
+    supportRoleId = config.supportRoleId || null;
+    if (categoryId) ticketCategory.set(guild.id, categoryId);
+  } else {
+    supportRoleId = loadGuildConfig(guild.id).supportRoleId || null;
+  }
 
   if (!categoryId)
-    return interaction.reply({ content: 'Catégorie ticket non définie.', ephemeral: true });
+    return interaction.reply({
+      content: '⚠️ Catégorie ticket non définie.',
+      ephemeral: true,
+    });
 
   if (openTickets.has(userId))
-    return interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
+    return interaction.reply({
+      content: '❌ Vous avez déjà un ticket ouvert !',
+      ephemeral: true,
+    });
 
   const channel = await guild.channels.create({
     name: `ticket-${interaction.user.username}`,
@@ -29,8 +47,8 @@ export async function handleTicket(interaction) {
     permissionOverwrites: [
       { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
       { id: userId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-      SUPPORT_ROLE_ID
-        ? { id: SUPPORT_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }
+      supportRoleId
+        ? { id: supportRoleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }
         : null,
     ].filter(Boolean),
   });
@@ -52,27 +70,17 @@ export function registerTickets(client) {
       const guild = interaction.guild;
       if (!guild) return;
 
-      const existingChannel = guild.channels.cache.find(c => c.name === `ticket-${interaction.user.id}`);
+      const existingChannel = guild.channels.cache.find(
+        c => c.name === `ticket-${interaction.user.id}`
+      );
       if (existingChannel)
-        return interaction.reply({ content: 'Vous avez déjà un ticket ouvert !', ephemeral: true });
+        return interaction.reply({ content: '❌ Vous avez déjà un ticket ouvert !', ephemeral: true });
 
-      const channel = await guild.channels.create({
-        name: `ticket-${interaction.user.username}`,
-        type: ChannelType.GuildText,
-        parent: TICKET_CATEGORY_ID,
-        permissionOverwrites: [
-          { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-          SUPPORT_ROLE_ID
-            ? { id: SUPPORT_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }
-            : null,
-        ].filter(Boolean),
-      });
-
-      openTickets.set(interaction.user.id, channel.id);
-      await interaction.reply({ content: `✅ Ticket créé : ${channel}`, ephemeral: true });
-      sendLog(client, guild.id, { action: 'Ticket créé via bouton', user: interaction.user });
-      await channel.send({ content: `Bonjour ${interaction.user}, un membre du support va bientôt vous aider.` });
+      await handleTicket(interaction);
+      const channel = guild.channels.cache.get(openTickets.get(interaction.user.id));
+      if (channel) {
+        await channel.send({ content: `Bonjour ${interaction.user}, un membre du support va bientôt vous aider.` });
+      }
     }
   });
 
