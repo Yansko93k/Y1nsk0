@@ -6,14 +6,19 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Dossier pour stocker les configs
+const dataDir = path.join(__dirname, '../data');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+
 // Chemin absolu vers le fichier JSON
-const filePath = path.join(__dirname, 'guildConfigs.json'); // fichier à côté de storage.js
+const filePath = path.join(dataDir, 'guildConfigs.json');
 
 // Sauvegarde la config d'une guild
 export function saveGuildConfig(guildId, data) {
   const configs = loadAllConfigs();
   configs[guildId] = { ...(configs[guildId] || {}), ...data };
   fs.writeFileSync(filePath, JSON.stringify(configs, null, 2));
+  console.log(`🔹 Config sauvegardée pour ${guildId}:`, configs[guildId]);
 }
 
 // Charge la config d'une guild
