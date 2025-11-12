@@ -1,8 +1,9 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import Database from 'better-sqlite3';
 
-// Récupère le dossier actuel du fichier
+// Récupère le dossier actuel
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -26,22 +27,24 @@ db.prepare(`
     captcha TEXT,
     roleNon TEXT,
     roleVerif TEXT,
-    ticketCat TEXT
+    ticketCat TEXT,
+    supportRoleId TEXT
   )
 `).run();
 
-// Sauvegarde ou met à jour la config d’une guild
+// Sauvegarde ou met à jour la config
 export function saveGuildConfig(guildId, data) {
   const stmt = db.prepare(`
-    INSERT INTO guild_configs (guildId, log, welcome, captcha, roleNon, roleVerif, ticketCat)
-    VALUES (@guildId, @log, @welcome, @captcha, @roleNon, @roleVerif, @ticketCat)
+    INSERT INTO guild_configs (guildId, log, welcome, captcha, roleNon, roleVerif, ticketCat, supportRoleId)
+    VALUES (@guildId, @log, @welcome, @captcha, @roleNon, @roleVerif, @ticketCat, @supportRoleId)
     ON CONFLICT(guildId) DO UPDATE SET
       log=@log,
       welcome=@welcome,
       captcha=@captcha,
       roleNon=@roleNon,
       roleVerif=@roleVerif,
-      ticketCat=@ticketCat
+      ticketCat=@ticketCat,
+      supportRoleId=@supportRoleId
   `);
   stmt.run({ guildId, ...data });
   console.log(`🔹 Config sauvegardée pour ${guildId}:`, data);

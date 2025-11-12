@@ -5,7 +5,9 @@ import { registerLogs, logChannels } from './logs.js';
 import { registerTickets, ticketCategory } from './tickets.js';
 import { registerCaptcha, welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js';
 import { registerCommands } from './commands/index.js';
-import { loadAllConfigs, saveGuildConfig } from './storage.js';
+import { loadAllConfigs } from './storage.js';
+
+export let SUPPORT_ROLE_ID = null; // dynamique
 
 const client = new Client({
   intents: [
@@ -21,7 +23,7 @@ const client = new Client({
 
 client.commands = new Map();
 
-// --- Chargement automatique des configs sauvegardées ---
+// --- Chargement automatique des configs depuis SQLite ---
 const allConfigs = loadAllConfigs();
 for (const [guildId, cfg] of Object.entries(allConfigs)) {
   if (cfg.log) logChannels.set(guildId, cfg.log);
@@ -30,6 +32,7 @@ for (const [guildId, cfg] of Object.entries(allConfigs)) {
   if (cfg.roleNon) rolesNonVerif.set(guildId, cfg.roleNon);
   if (cfg.roleVerif) rolesVerif.set(guildId, cfg.roleVerif);
   if (cfg.ticketCat) ticketCategory.set(guildId, cfg.ticketCat);
+  if (cfg.supportRoleId) SUPPORT_ROLE_ID = cfg.supportRoleId;
 }
 // ---------------------------------------------------------
 
@@ -41,7 +44,7 @@ app.listen(PORT, () => console.log(`🌐 Serveur web démarré sur le port ${POR
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
-  console.error('❌ Erreur : token Discord non défini dans .env');
+  console.error('❌ Token Discord non défini');
   process.exit(1);
 }
 
@@ -51,16 +54,10 @@ registerTickets(client);
 registerCaptcha(client);
 registerCommands(client);
 
-// Sécurisation des erreurs non gérées
-process.on('unhandledRejection', err => {
-  console.error('🚨 Erreur non gérée :', err);
-});
-process.on('uncaughtException', err => {
-  console.error('🔥 Exception non interceptée :', err);
-});
+// Gestion des erreurs
+process.on('unhandledRejection', console.error);
+process.on('uncaughtException', console.error);
 
-client.once('ready', () => {
-  console.log(`✅ Connecté en tant que ${client.user.tag}`);
-});
+client.once('ready', () => console.log(`✅ Connecté en tant que ${client.user.tag}`));
 
 client.login(token);
