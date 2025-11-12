@@ -72,7 +72,8 @@ export function registerTickets(client) {
   });
 
   client.on('ready', async () => {
-    const channel = client.channels.cache.get(1309245840778596362);
+  const channel = client.channels.cache.get('1309245840778596362');
+
     if (!channel) return console.log('Salon pour le message ticket introuvable');
 
     const row = new ActionRowBuilder().addComponents(
