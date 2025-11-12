@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { registerLogs, logChannels } from './logs.js';
 import { registerTickets, ticketCategory } from './tickets.js';
 import { registerCaptcha, welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from './captcha.js';
@@ -16,6 +16,7 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessageReactions,
   ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
 client.commands = new Map();
@@ -32,15 +33,15 @@ for (const [guildId, cfg] of Object.entries(allConfigs)) {
 }
 // ---------------------------------------------------------
 
-// Serveur web minimal pour Render
+// Serveur web minimal (pour Render)
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot en ligne !'));
-app.listen(PORT, () => console.log(`Serveur web démarré sur le port ${PORT}`));
+app.get('/', (_, res) => res.send('✅ Bot en ligne !'));
+app.listen(PORT, () => console.log(`🌐 Serveur web démarré sur le port ${PORT}`));
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
-  console.error('Erreur : token Discord non défini');
+  console.error('❌ Erreur : token Discord non défini dans .env');
   process.exit(1);
 }
 
@@ -50,6 +51,16 @@ registerTickets(client);
 registerCaptcha(client);
 registerCommands(client);
 
-client.once('ready', () => console.log(`Connecté en tant que ${client.user.tag}`));
+// Sécurisation des erreurs non gérées
+process.on('unhandledRejection', err => {
+  console.error('🚨 Erreur non gérée :', err);
+});
+process.on('uncaughtException', err => {
+  console.error('🔥 Exception non interceptée :', err);
+});
+
+client.once('ready', () => {
+  console.log(`✅ Connecté en tant que ${client.user.tag}`);
+});
 
 client.login(token);

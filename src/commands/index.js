@@ -10,22 +10,34 @@ export async function registerCommands(client) {
     const command = await import(`file://${filePath}`);
     if (command.data && command.execute) {
       client.commands.set(command.data.name, command);
-      console.log(`Commande chargée : ${command.data.name}`);
+      console.log(`✅ Commande chargée : ${command.data.name}`);
+    } else {
+      console.warn(`⚠️ Le fichier ${file} ne contient pas data/execute`);
     }
   }
 
   client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
+
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
+
     try {
       await command.execute(interaction);
     } catch (err) {
-      console.error(err);
+      console.error(`❌ Erreur dans la commande ${interaction.commandName}:`, err);
+
+      // Sécurité anti-double réponse
       if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content: 'Erreur lors de l’exécution de la commande.', ephemeral: true });
+        await interaction.followUp({
+          content: '⚠️ Une erreur est survenue pendant l’exécution de la commande.',
+          ephemeral: true,
+        }).catch(() => {});
       } else {
-        await interaction.reply({ content: 'Erreur lors de l’exécution de la commande.', ephemeral: true });
+        await interaction.reply({
+          content: '⚠️ Une erreur est survenue pendant l’exécution de la commande.',
+          ephemeral: true,
+        }).catch(() => {});
       }
     }
   });
