@@ -21,6 +21,9 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   try {
+    // ⚡ Défère la réponse immédiatement pour éviter l'erreur Unknown interaction
+    await interaction.deferReply({ flags: 64 });
+
     const guildId = interaction.guild.id;
 
     const log = interaction.options.getChannel('log')?.id || logChannels.get(guildId);
@@ -41,23 +44,25 @@ export async function execute(interaction) {
     // Sauvegarde persistante
     saveGuildConfig(guildId, { log, welcome, captcha, roleNon, roleVerif, ticketCat });
 
-    // Réponse à l'utilisateur
-    await interaction.reply({
+    // Envoi du message final via editReply
+    await interaction.editReply({
       content: '✅ Configuration mise à jour et sauvegardée !',
       flags: 64, // remplace ephemeral: true
     });
   } catch (err) {
     console.error('Erreur dans /config :', err);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: '❌ Une erreur est survenue lors de la configuration.',
-        flags: 64,
-      }).catch(() => {});
-    } else {
-      await interaction.reply({
-        content: '❌ Une erreur est survenue lors de la configuration.',
-        flags: 64,
-      }).catch(() => {});
-    }
+
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.editReply({
+          content: '❌ Une erreur est survenue lors de la configuration.',
+        });
+      } else {
+        await interaction.reply({
+          content: '❌ Une erreur est survenue lors de la configuration.',
+          flags: 64,
+        });
+      }
+    } catch {}
   }
 }
