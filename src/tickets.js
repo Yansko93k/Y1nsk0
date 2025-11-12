@@ -40,6 +40,7 @@ export async function handleTicket(interaction) {
       ephemeral: true,
     });
 
+  // Crée le salon ticket
   const channel = await guild.channels.create({
     name: `ticket-${interaction.user.username}`,
     type: ChannelType.GuildText,
@@ -54,6 +55,20 @@ export async function handleTicket(interaction) {
   });
 
   openTickets.set(userId, channel.id);
+
+  // Crée le bouton "Fermer le ticket"
+  const closeButton = new ButtonBuilder()
+    .setCustomId('close_ticket')
+    .setLabel('🔒 Fermer le ticket')
+    .setStyle(ButtonStyle.Danger);
+
+  const row = new ActionRowBuilder().addComponents(closeButton);
+
+  await channel.send({
+    content: `Bonjour ${interaction.user}, un membre du support va bientôt vous aider.`,
+    components: [row],
+  });
+
   await interaction.reply({ content: `✅ Ticket créé : ${channel}`, ephemeral: true });
   sendLog(interaction.client, guild.id, { action: 'Ticket créé', user: interaction.user });
 }
@@ -71,20 +86,38 @@ export function registerTickets(client) {
       if (!guild) return;
 
       const existingChannel = guild.channels.cache.find(
-        c => c.name === `ticket-${interaction.user.id}`
+        c => c.name === `ticket-${interaction.user.username}`
       );
       if (existingChannel)
         return interaction.reply({ content: '❌ Vous avez déjà un ticket ouvert !', ephemeral: true });
 
       await handleTicket(interaction);
-      const channel = guild.channels.cache.get(openTickets.get(interaction.user.id));
-      if (channel) {
-        await channel.send({ content: `Bonjour ${interaction.user}, un membre du support va bientôt vous aider.` });
+    }
+
+    // Bouton "close_ticket"
+    if (interaction.isButton() && interaction.customId === 'close_ticket') {
+      const channel = interaction.channel;
+      const userId = interaction.user.id;
+
+      if (!channel) return;
+
+      try {
+        await interaction.reply({ content: '🔒 Fermeture du ticket...', ephemeral: true });
+        await channel.delete('Ticket fermé');
+        openTickets.forEach((val, key) => {
+          if (val === channel.id) openTickets.delete(key);
+        });
+        sendLog(client, interaction.guild.id, { action: 'Ticket fermé', user: interaction.user });
+      } catch (err) {
+        console.error('Erreur en fermant le ticket :', err);
+        if (!interaction.replied) {
+          await interaction.reply({ content: '❌ Impossible de fermer le ticket.', ephemeral: true });
+        }
       }
     }
   });
 
-  // Envoi du message bouton quand le bot démarre
+  // Envoi du message bouton "Ouvrir un ticket" au démarrage
   client.once('ready', async () => {
     try {
       const channel = await client.channels.fetch(TICKET_MESSAGE_CHANNEL_ID).catch(() => null);
