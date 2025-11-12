@@ -28,5 +28,26 @@ db.prepare(`
     supportRoleId TEXT
   )
 `).run();
+// db.js (ajoute ceci en bas avant export)
+export function saveConfig(guildId, config) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO guildConfigs
+    (guildId, log, welcome, captcha, roleNon, roleVerif, ticketCat, supportRoleId)
+    VALUES (@guildId, @log, @welcome, @captcha, @roleNon, @roleVerif, @ticketCat, @supportRoleId)
+  `);
+
+  stmt.run({
+    guildId,
+    log: config.log || null,
+    welcome: config.welcome || null,
+    captcha: config.captcha || null,
+    roleNon: config.roleNon || null,
+    roleVerif: config.roleVerif || null,
+    ticketCat: config.ticketCat || null,
+    supportRoleId: config.supportRoleId || null
+  });
+
+  console.log(`🔹 Config sauvegardée pour ${guildId}`);
+}
 
 export default db;
