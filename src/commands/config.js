@@ -1,12 +1,12 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { logChannels } from '../logs.js';
-import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from '../captcha.js'; // si captcha.js est dans commands
+import { welcomeChannels, captchaChannels, rolesNonVerif, rolesVerif } from '../captcha.js';
 import { ticketCategory } from '../tickets.js';
 import { saveGuildConfig } from '../storage.js';
 
 // Constantes fixes pour les tickets
 export const TICKET_CATEGORY_ID = '1309138297733517364';
-export const SUPPORT_ROLE_ID = '371158803674038283';
+export const SUPPORT_ROLE_ID = '1311063281838067712';
 export const TICKET_MESSAGE_CHANNEL_ID = '1309245840778596362';
 
 export const data = new SlashCommandBuilder()
@@ -20,22 +20,44 @@ export const data = new SlashCommandBuilder()
   .addChannelOption(opt => opt.setName('ticketcat').setDescription('Catégorie tickets'));
 
 export async function execute(interaction) {
-  const guildId = interaction.guild.id;
-  const log = interaction.options.getChannel('log')?.id;
-  const welcome = interaction.options.getChannel('welcome')?.id;
-  const captcha = interaction.options.getChannel('captcha')?.id;
-  const roleNon = interaction.options.getRole('nonverif')?.id;
-  const roleVerif = interaction.options.getRole('verif')?.id;
-  const ticketCat = interaction.options.getChannel('ticketcat')?.id;
+  try {
+    const guildId = interaction.guild.id;
 
-  saveGuildConfig(guildId, { log, welcome, captcha, roleNon, roleVerif, ticketCat });
+    const log = interaction.options.getChannel('log')?.id || logChannels.get(guildId);
+    const welcome = interaction.options.getChannel('welcome')?.id || welcomeChannels.get(guildId);
+    const captcha = interaction.options.getChannel('captcha')?.id || captchaChannels.get(guildId);
+    const roleNon = interaction.options.getRole('nonverif')?.id || rolesNonVerif.get(guildId);
+    const roleVerif = interaction.options.getRole('verif')?.id || rolesVerif.get(guildId);
+    const ticketCat = interaction.options.getChannel('ticketcat')?.id || ticketCategory.get(guildId);
 
-  if (log) logChannels.set(guildId, log);
-  if (welcome) welcomeChannels.set(guildId, welcome);
-  if (captcha) captchaChannels.set(guildId, captcha);
-  if (roleNon) rolesNonVerif.set(guildId, roleNon);
-  if (roleVerif) rolesVerif.set(guildId, roleVerif);
-  if (ticketCat) ticketCategory.set(guildId, ticketCat);
+    // Mise à jour des Maps en mémoire
+    if (log) logChannels.set(guildId, log);
+    if (welcome) welcomeChannels.set(guildId, welcome);
+    if (captcha) captchaChannels.set(guildId, captcha);
+    if (roleNon) rolesNonVerif.set(guildId, roleNon);
+    if (roleVerif) rolesVerif.set(guildId, roleVerif);
+    if (ticketCat) ticketCategory.set(guildId, ticketCat);
 
-  await interaction.reply({ content: 'Configuration mise à jour !', ephemeral: true });
+    // Sauvegarde persistante
+    saveGuildConfig(guildId, { log, welcome, captcha, roleNon, roleVerif, ticketCat });
+
+    // Réponse à l'utilisateur
+    await interaction.reply({
+      content: '✅ Configuration mise à jour et sauvegardée !',
+      flags: 64, // remplace ephemeral: true
+    });
+  } catch (err) {
+    console.error('Erreur dans /config :', err);
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({
+        content: '❌ Une erreur est survenue lors de la configuration.',
+        flags: 64,
+      }).catch(() => {});
+    } else {
+      await interaction.reply({
+        content: '❌ Une erreur est survenue lors de la configuration.',
+        flags: 64,
+      }).catch(() => {});
+    }
+  }
 }
