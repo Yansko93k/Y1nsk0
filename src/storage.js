@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 // Dossier pour stocker les configs
 const dataDir = path.join(__dirname, '../data');
-import fs from 'fs';
+
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 
 // Chemin du fichier SQLite
